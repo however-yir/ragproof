@@ -1,0 +1,20 @@
+{"id": "q001", "question": "什么是检索增强生成（RAG）？", "ground_truth": "RAG 是一种将外部知识检索与大语言模型生成相结合的技术，通过检索相关文档来增强模型回答的准确性和可溯源性。", "relevant_doc_ids": ["doc1", "doc2"]}
+{"id": "q002", "question": "向量数据库在 RAG 系统中的作用是什么？", "ground_truth": "向量数据库存储文档的嵌入向量，支持语义相似度检索，是 RAG 系统实现高效文档召回的核心组件。", "relevant_doc_ids": ["doc2", "doc3"]}
+{"id": "q003", "question": "如何评估 RAG 系统的检索质量？", "ground_truth": "常用指标包括 recall@k（相关文档召回率）、precision@k（精确率）、MRR（平均倒数排名）和 hit_rate。", "relevant_doc_ids": ["doc4"]}
+{"id": "q004", "question": "什么是幻觉（hallucination）问题？", "ground_truth": "幻觉是指大语言模型生成与事实不符或无法从上下文中得到支撑的内容，是 RAG 系统需要重点防范的质量问题。", "relevant_doc_ids": ["doc1", "doc5"]}
+{"id": "q005", "question": "Spring AI 支持哪些向量存储？", "ground_truth": "Spring AI 支持 pgvector、Redis、Chroma、Pinecone、Weaviate 等多种向量存储，并提供统一的 VectorStore 接口。", "relevant_doc_ids": ["doc3"]}
+{"id": "q006", "question": "什么是混合检索（Hybrid Retrieval）？", "ground_truth": "混合检索结合向量语义检索与关键词检索（如 BM25），通过融合排序提升召回率和精确率。", "relevant_doc_ids": ["doc2", "doc4"]}
+{"id": "q007", "question": "如何实现文档的分块（chunking）策略？", "ground_truth": "常见策略包括固定大小分块、按句子/段落分块、递归分块，以及基于语义相似度的动态分块。", "relevant_doc_ids": ["doc3", "doc5"]}
+{"id": "q008", "question": "什么是 ReAct 框架？", "ground_truth": "ReAct 是一种将推理（Reasoning）与行动（Acting）交替进行的 Agent 框架，通过思维链引导模型调用工具并观察结果。", "relevant_doc_ids": ["doc6"]}
+{"id": "q009", "question": "多租户 RAG 系统如何实现数据隔离？", "ground_truth": "通过在向量存储和关系数据库中加入 tenant_id 字段，检索时强制过滤，确保不同租户的知识库互不干扰。", "relevant_doc_ids": ["doc1", "doc6"]}
+{"id": "q010", "question": "什么是 LLM-as-judge 评估方法？", "ground_truth": "使用大语言模型作为评判者，对生成答案的忠实度、相关性等维度打分，是自动化评估 RAG 质量的主流方法之一。", "relevant_doc_ids": ["doc4", "doc5"]}
+{"id": "q011", "question": "如何在 CI 流水线中集成 RAG 评测？", "ground_truth": "在 GitHub Actions 等 CI 工具中运行 ragproof，设置指标阈值，当 faithfulness 或 recall@k 低于基线时自动失败。", "relevant_doc_ids": ["doc4"]}
+{"id": "q012", "question": "什么是引用溯源（citation）？", "ground_truth": "引用溯源是指 RAG 系统在生成答案时标注每个观点来自哪个文档片段，提升答案的可信度和可验证性。", "relevant_doc_ids": ["doc1", "doc2"]}
+{"id": "q013", "question": "Ollama 如何用于本地大模型推理？", "ground_truth": "Ollama 提供本地大模型运行环境，支持 OpenAI 兼容 API，可在无网络环境下运行 Llama、Qwen 等开源模型。", "relevant_doc_ids": ["doc7"]}
+{"id": "q014", "question": "什么是 pgvector？", "ground_truth": "pgvector 是 PostgreSQL 的向量扩展，支持高维向量存储和近似最近邻（ANN）检索，常用于 RAG 系统的向量存储层。", "relevant_doc_ids": ["doc3"]}
+{"id": "q015", "question": "如何衡量 RAG 答案的忠实度（faithfulness）？", "ground_truth": "忠实度衡量答案中每个声明是否有检索到的上下文支撑，通常由 LLM-as-judge 打分，范围 0-1。", "relevant_doc_ids": ["doc4", "doc5"]}
+{"id": "q016", "question": "什么是 MRR（Mean Reciprocal Rank）？", "ground_truth": "MRR 是检索评估指标，计算第一个相关文档排名的倒数均值，值越高说明相关文档排名越靠前。", "relevant_doc_ids": ["doc4"]}
+{"id": "q017", "question": "异步文档入库流水线的优势是什么？", "ground_truth": "异步入库通过消息队列解耦上传与处理，支持重试、幂等、状态追踪，避免大文件处理阻塞 API 响应。", "relevant_doc_ids": ["doc6"]}
+{"id": "q018", "question": "什么是 Resilience4j？", "ground_truth": "Resilience4j 是 Java 生态的容错库，提供熔断器、重试、限流、超时等模式，用于保护微服务和 LLM 调用的稳定性。", "relevant_doc_ids": ["doc6"]}
+{"id": "q019", "question": "如何用 Docker Compose 部署 RAG 系统？", "ground_truth": "通过 docker-compose.yml 定义应用、数据库、向量存储、消息队列等服务，一键启动完整的 RAG 运行环境。", "relevant_doc_ids": ["doc7"]}
+{"id": "q020", "question": "知识图谱在 RAG 中的作用是什么？", "ground_truth": "知识图谱通过实体和关系建模结构化知识，GraphRetriever 可以检索实体邻居和事实，补充向量检索的语义覆盖。", "relevant_doc_ids": ["doc2", "doc7"]}

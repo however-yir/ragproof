@@ -1,0 +1,22 @@
+"""Base protocol for RAG adapters."""
+
+from __future__ import annotations
+
+from typing import Protocol, runtime_checkable
+
+from pydantic import BaseModel, Field
+
+
+class RAGResponse(BaseModel):
+    question: str
+    answer: str
+    contexts: list[str] = Field(default_factory=list)
+    context_ids: list[str] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    latency_ms: float = 0.0
+    error: str | None = None
+
+
+@runtime_checkable
+class RAGAdapter(Protocol):
+    def ask(self, question: str) -> RAGResponse: ...

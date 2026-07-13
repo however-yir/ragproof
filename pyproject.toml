@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragproof"
+version = "0.1.0"
+description = "Framework-agnostic RAG evaluation and regression-testing CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "however-yir" }]
+keywords = ["rag", "llm", "evaluation", "regression", "faithfulness", "retrieval"]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.5",
+    "click>=8.1",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+ragproof = "ragproof.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/however-yir/ragproof"
+
+[tool.setuptools.packages.find]
+include = ["ragproof*"]
+
+[tool.setuptools.package-data]
+ragproof = ["templates/*.html.j2", "templates/*.md.j2"]

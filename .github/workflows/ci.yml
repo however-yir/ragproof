@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Mock end-to-end smoke
+        run: |
+          ragproof run -c examples/mock.yaml -o runs/ci.json
+          ragproof compare --baseline runs/ci.json --current runs/ci.json --threshold "error_rate=0.0"
+          ragproof report runs/ci.json -o runs/ci-report.html

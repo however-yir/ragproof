@@ -1,0 +1,59 @@
+name: RAG Evaluation Gate
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "prompts/**"
+      - "config/**"
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ragproof
+        run: pip install ragproof  # or: pip install -e path/to/ragproof
+
+      # Start the RAG system under test (adjust to your stack)
+      - name: Start services
+        run: docker compose up -d
+        working-directory: path/to/your-rag-project
+
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/actuator/health && break
+            sleep 2
+          done
+
+      # Run evaluation against the live system
+      - name: Run eval
+        env:
+          KNOWLEDGEOPS_API_KEY: ${{ secrets.KNOWLEDGEOPS_API_KEY }}
+          RAGPROOF_JUDGE_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          ragproof run -c examples/knowledgeops.yaml -o runs/current.json
+
+      # Compare against the committed baseline; fail PR if thresholds not met
+      - name: Regression gate
+        run: |
+          ragproof compare \
+            --baseline runs/baseline.json \
+            --current  runs/current.json \
+            --threshold "recall@5=0.70" \
+            --threshold "faithfulness=0.75" \
+            --threshold "citation_coverage=0.80"
+
+      # Always upload the run artifact for inspection
+      - name: Upload run artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragproof-run
+          path: runs/current.json

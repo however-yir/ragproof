@@ -1,0 +1,17 @@
+# Offline demo config — no live RAG system or LLM needed.
+# Uses the mock adapter and disables the judge, so you can run:
+#   ragproof run -c examples/mock.yaml -o runs/current.json
+#   ragproof report runs/current.json -o report.html
+
+name: mock-demo-run
+
+dataset: examples/dataset.sample.jsonl
+
+adapter:
+  type: mock
+
+judge:
+  enabled: false
+
+concurrency: 4
+top_k: 5
