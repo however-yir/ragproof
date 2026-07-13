@@ -14,6 +14,8 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 
 ---
 
+![ragproof sample report](docs/assets/sample-report-screenshot.png)
+
 ## Features
 
 | 能力 | 说明 |
@@ -152,7 +154,7 @@ concurrency: 4
 
 ## Sample Report
 
-仓库内置一份用 mock adapter 跑出的示例：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。
+仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。
 
 ## Development
 
