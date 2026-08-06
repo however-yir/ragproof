@@ -7,6 +7,8 @@ All functions take:
 
 from __future__ import annotations
 
+import math
+
 
 def recall_at_k(retrieved: list[str], relevant: list[str], k: int) -> float | None:
     if not relevant:
@@ -42,3 +44,35 @@ def hit_rate(retrieved: list[str], relevant: list[str], k: int) -> float | None:
         return None
     top = set(retrieved[:k])
     return 1.0 if any(d in top for d in relevant) else 0.0
+
+
+def ndcg_at_k(retrieved: list[str], relevant: list[str], k: int) -> float | None:
+    """Normalized discounted cumulative gain for binary relevance."""
+    if not relevant or k <= 0:
+        return None
+    rel = set(relevant)
+    dcg = sum((1.0 / math.log2(i + 2)) for i, doc_id in enumerate(retrieved[:k]) if doc_id in rel)
+    ideal_hits = min(len(rel), k)
+    ideal = sum(1.0 / math.log2(i + 2) for i in range(ideal_hits))
+    return dcg / ideal if ideal else 0.0
+
+
+def average_precision_at_k(retrieved: list[str], relevant: list[str], k: int) -> float | None:
+    """Average precision at k for binary document relevance."""
+    if not relevant or k <= 0:
+        return None
+    rel = set(relevant)
+    hits = 0
+    score = 0.0
+    for rank, doc_id in enumerate(retrieved[:k], start=1):
+        if doc_id in rel:
+            hits += 1
+            score += hits / rank
+    return score / min(len(rel), k)
+
+
+def duplicate_rate(retrieved: list[str]) -> float:
+    """Fraction of retrieved slots that repeat an earlier document id."""
+    if not retrieved:
+        return 0.0
+    return (len(retrieved) - len(set(retrieved))) / len(retrieved)

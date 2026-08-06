@@ -1,0 +1,15 @@
+name: openai-compatible-rag-eval
+dataset: dataset.sample.jsonl
+adapter:
+  type: openai
+  base_url: http://localhost:11434/v1
+  endpoint: /chat/completions
+  bearer_token_env: RAGPROOF_JUDGE_API_KEY
+  request_template:
+    model: rag-model
+    messages:
+      - role: user
+        content: "{question}"
+  answer_path: choices.0.message.content
+judge:
+  enabled: false

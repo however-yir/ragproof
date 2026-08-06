@@ -1,0 +1,10 @@
+name: langserve-eval
+dataset: dataset.sample.jsonl
+adapter:
+  type: langserve
+  base_url: http://localhost:8000
+  endpoint: /invoke
+  answer_path: output
+  contexts_path: metadata.contexts
+judge:
+  enabled: false

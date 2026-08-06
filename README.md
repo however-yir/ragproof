@@ -25,13 +25,18 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 | **LLM-as-judge** | `faithfulness`（答案是否被上下文支撑 / 幻觉检测）/ `answer_relevancy`（答案是否切题），任何 OpenAI 兼容端点均可，**本地 Ollama 开箱即用** |
 | **回归门禁** | `ragproof compare` 对比 baseline 与 current，阈值不达标 exit code = 1，直接卡住 CI |
 | **报告** | 一条命令生成 Markdown / HTML 报告 |
+| **可解释性** | 失败样本排序、上下文片段、检索 ID、引用匹配、Judge 原因、复制失败 JSON |
+| **分组分析** | 按 tags / difficulty 汇总，支持中文、英文、企业、安全数据切片 |
+| **回归策略** | 绝对阈值、最小 delta、最大相对下降，支持 GitHub Actions 注释 |
+| **工程化** | `validate` / `init` / dry-run / JSON / CSV / judge cache / 多模型投票 |
 | **框架无关** | 通用 HTTP adapter，通过 YAML 声明请求/响应字段映射即可接入任何 RAG API（Spring AI / LangChain / LlamaIndex / 自研均可） |
 | **优雅降级** | Judge 端点不可用时自动跳过 LLM 指标，确定性指标照常输出 |
 
 ## Quick Start
 
 ```bash
-pip install -e .   # 从源码安装 (PyPI 发布在 roadmap 中)
+pip install ragproof   # PyPI
+# 或从源码安装：pip install -e ".[dev]"
 ```
 
 **30 秒离线体验**（mock adapter，无需任何 RAG 系统或模型）：
@@ -54,6 +59,12 @@ ragproof compare \
   --current  runs/current.json \
   --threshold "recall@5=0.70" \
   --threshold "faithfulness=0.75"
+
+# 同时限制相对回归和绝对变化
+ragproof compare \
+  --baseline runs/baseline.json --current runs/current.json \
+  --min-delta "faithfulness=-0.03" \
+  --max-relative-drop "citation_coverage=5%"
 
 # 3. 生成报告
 ragproof report runs/current.json -o report.html
@@ -109,6 +120,7 @@ adapter:
   contexts_path: data.contexts              # 检索上下文列表
   context_id_path: docId                    # 每个上下文条目的 id 字段
   citations_path: data.citations            # 引用列表
+  bearer_token_env: KNOWLEDGEOPS_API_KEY    # 自动生成 Authorization: Bearer ...
 
 judge:
   base_url: http://localhost:11434/v1       # Ollama / 任何 OpenAI 兼容端点
@@ -116,7 +128,14 @@ judge:
   skip_on_error: true                       # judge 不可用时跳过而非失败
 
 top_k: 5
+top_ks: [3, 5, 10]                          # 一次运行多个 k
 concurrency: 4
+
+# 可选数据切片
+include_tags: [enterprise]
+exclude_tags: [draft]
+sample_limit: 100
+seed: 42
 ```
 
 完整示例：[examples/knowledgeops.yaml](examples/knowledgeops.yaml)（对接 [knowledgeops-agent](https://github.com/however-yir/knowledgeops-agent)）、[examples/mock.yaml](examples/mock.yaml)（离线演示）。
@@ -138,6 +157,8 @@ concurrency: 4
 
 完整流水线示例：[examples/github-actions.yml](examples/github-actions.yml)。
 
+先用 `ragproof validate -c examples/mock.yaml` 检查配置，用 `ragproof run --dry-run -c examples/mock.yaml` 检查执行计划。
+
 ## Metrics Reference
 
 | Metric | Type | 含义 |
@@ -146,15 +167,24 @@ concurrency: 4
 | `precision@k` | deterministic | top-k 检索结果中相关文档的占比 |
 | `mrr` | deterministic | 第一个相关文档排名的倒数 |
 | `hit_rate@k` | deterministic | top-k 中是否命中任一相关文档 |
+| `ndcg@k` / `map@k` | deterministic | 排序质量指标 |
 | `citation_coverage` | deterministic | 检索到上下文时答案是否给出引用 |
 | `citation_validity` | deterministic | 引用指向真实检索结果的比例 |
+| `citation_recall` | deterministic | 命中期望引用的比例 |
+| `exact_match` / `semantic_similarity` | deterministic | 参考答案匹配 / 无 embedding 的 token-F1 代理 |
+| `context_utilization` | deterministic | 答案词与上下文词的重合度 |
+| `empty_answer_rate` / `refusal_rate` | deterministic | 空答案 / 拒答信号 |
 | `faithfulness` | LLM-as-judge | 答案声明被上下文支撑的程度（幻觉检测），0–1 |
+| `groundedness` / `hallucination_rate` | LLM-as-judge | 更细的支撑度 / 幻觉反向指标 |
+| `context_relevance` | LLM-as-judge | 检索上下文对问题的相关性 |
 | `answer_relevancy` | LLM-as-judge | 答案对问题的切题程度，0–1 |
 | `avg_latency_ms` / `error_rate` | operational | 平均延迟 / 请求错误率 |
 
 ## Sample Report
 
-仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。
+仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。报告也支持 CSV：`ragproof report runs/current.json -o report.csv`。
+
+更多说明：[数据集规范](docs/DATASET_SCHEMA.md)、[Adapter 指南](docs/ADAPTERS.md)、[CI 教程](docs/CI_TUTORIAL.md)、[架构](docs/ARCHITECTURE.md)、[Benchmark 与适用边界](docs/BENCHMARK.md)。
 
 ## Development
 
@@ -162,14 +192,20 @@ concurrency: 4
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest
+ruff check ragproof tests
+mypy ragproof --ignore-missing-imports
+
+# 创建一个新评测
+ragproof init eval/ragproof.yaml
+ragproof validate -c eval/ragproof.yaml
 ```
 
 ## Roadmap
 
-- [ ] PyPI 发布
-- [ ] LLM judge 结果缓存（相同 answer+contexts 不重复打分）
-- [ ] `compare` 支持相对回归阈值（如 "较 baseline 下降不超过 5%"）
-- [ ] 更多内置 adapter 预设（LangServe / OpenAI Assistants / Dify）
+- [x] PyPI Trusted Publishing 发布流
+- [x] LLM judge 结果缓存、结构化原因、多模型投票
+- [x] `compare` 支持相对回归阈值和 delta
+- [x] LangServe / LangChain / LlamaIndex / Dify / OpenAI 兼容预设
 - [ ] 多 run 趋势报告
 
 ## Why Another Eval Tool?
