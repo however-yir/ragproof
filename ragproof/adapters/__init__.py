@@ -47,7 +47,7 @@ def build_adapter(config: AdapterConfig, *, retries: int | None = None, retry_ba
             if plugin.name == config.type:
                 return plugin.load()(config)
     except TypeError:
-        plugins = entry_points().get("ragproof.adapters", [])  # type: ignore[attr-defined]
+        plugins = entry_points().get("ragproof.adapters", [])  # type: ignore[attr-defined,arg-type]
         for plugin in plugins:
             if plugin.name == config.type:
                 return plugin.load()(config)
