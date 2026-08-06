@@ -22,3 +22,22 @@ def citation_validity(citations: list[str], context_ids: list[str]) -> float | N
         return 0.0
     known = set(context_ids)
     return sum(1 for c in citations if c in known) / len(citations)
+
+
+def citation_precision(citations: list[str], context_ids: list[str]) -> float | None:
+    """Alias with information-retrieval terminology for citation validity."""
+    return citation_validity(citations, context_ids)
+
+
+def citation_recall(citations: list[str], expected_citations: list[str]) -> float | None:
+    """Fraction of expected citations that were emitted by the answer."""
+    if not expected_citations:
+        return None
+    expected = set(expected_citations)
+    return len(expected.intersection(citations)) / len(expected)
+
+
+def citation_matches(citations: list[str], context_ids: list[str]) -> list[dict[str, str | bool]]:
+    """Return per-citation evidence used by the report's explainability view."""
+    known = set(context_ids)
+    return [{"citation": citation, "valid": citation in known} for citation in citations]

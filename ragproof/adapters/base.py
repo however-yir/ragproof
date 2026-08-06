@@ -15,6 +15,8 @@ class RAGResponse(BaseModel):
     citations: list[str] = Field(default_factory=list)
     latency_ms: float = 0.0
     error: str | None = None
+    error_type: str | None = None
+    raw: dict | None = None
 
 
 @runtime_checkable

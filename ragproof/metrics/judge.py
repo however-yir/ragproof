@@ -1,38 +1,52 @@
-"""LLM-as-judge metrics via any OpenAI-compatible endpoint (incl. Ollama).
-
-Two metrics:
-  faithfulness      — is the answer grounded in the retrieved contexts? (0-1)
-  answer_relevancy  — does the answer address the question / ground truth? (0-1)
-
-The judge returns a bare number 0-10 which we normalize to 0-1.
-On any error, returns None when skip_on_error is set (graceful degradation).
-"""
+"""LLM-as-judge metrics via any OpenAI-compatible endpoint (including Ollama)."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import statistics
+import threading
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
 import httpx
 
 from ..config import JudgeConfig
 
-_FAITHFULNESS_PROMPT = """You are a strict RAG evaluation judge.
-Given retrieved CONTEXTS and an ANSWER, rate from 0 to 10 how well every claim
-in the answer is supported by the contexts. 10 = fully grounded, 0 = fabricated.
-Reply with ONLY the number.
+_PROMPTS = {
+    "faithfulness": """You are a strict RAG evaluation judge. Rate how well every claim in the ANSWER is supported by the CONTEXTS. 10 means fully grounded, 0 means fabricated.
+Return JSON only: {{\"score\": number from 0 to 10, \"reason\": \"short explanation\"}}.
 
 CONTEXTS:
 {contexts}
 
 ANSWER:
 {answer}
-"""
+""",
+    "groundedness": """You are a strict groundedness judge. Separate supported claims from unsupported claims in the ANSWER using only the CONTEXTS. 10 means every material claim is supported.
+Return JSON only: {{\"score\": number from 0 to 10, \"reason\": \"short explanation\"}}.
 
-_RELEVANCY_PROMPT = """You are a strict QA evaluation judge.
-Given a QUESTION, a REFERENCE answer (may be empty) and a CANDIDATE answer,
-rate from 0 to 10 how well the candidate addresses the question
-(consistent with the reference when provided). Reply with ONLY the number.
+CONTEXTS:
+{contexts}
+
+ANSWER:
+{answer}
+""",
+    "context_relevance": """You are a strict retrieval judge. Rate how relevant the CONTEXTS are to the QUESTION. 10 means the contexts directly contain the information needed to answer it.
+Return JSON only: {{\"score\": number from 0 to 10, \"reason\": \"short explanation\"}}.
+
+QUESTION:
+{question}
+
+CONTEXTS:
+{contexts}
+""",
+    "answer_relevancy": """You are a strict QA judge. Rate how well the CANDIDATE answers the QUESTION, consistent with the REFERENCE when provided.
+Return JSON only: {{\"score\": number from 0 to 10, \"reason\": \"short explanation\"}}.
 
 QUESTION:
 {question}
@@ -42,7 +56,20 @@ REFERENCE:
 
 CANDIDATE:
 {answer}
-"""
+""",
+}
+
+
+@dataclass
+class JudgeResult:
+    score: float
+    reason: str = ""
+    raw: str = ""
+    cached: bool = False
+    model: str = ""
+    votes: list[float] | None = None
+    tokens: int = 0
+    estimated_cost: float = 0.0
 
 
 class Judge:
@@ -54,42 +81,171 @@ class Judge:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=config.timeout,
         )
+        self._lock = threading.RLock()
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._cache_path = Path(config.cache_path).expanduser() if config.cache_path else None
+        self._load_cache()
 
-    def _score(self, prompt: str) -> float | None:
+    @property
+    def models(self) -> list[str]:
+        return list(dict.fromkeys(self.config.models or [self.config.model]))
+
+    def _load_cache(self) -> None:
+        if not self.config.cache_enabled or not self._cache_path or not self._cache_path.exists():
+            return
         try:
-            resp = self.client.post(
-                "/chat/completions",
-                json={
-                    "model": self.config.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0,
-                },
-            )
-            resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"]
-            match = re.search(r"\d+(?:\.\d+)?", text)
-            if not match:
-                return None
-            return max(0.0, min(10.0, float(match.group()))) / 10.0
-        except (httpx.HTTPError, KeyError, IndexError, ValueError):
-            if self.config.skip_on_error:
-                return None
-            raise
+            self._cache = json.loads(self._cache_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._cache = {}
 
-    def faithfulness(self, answer: str, contexts: list[str]) -> float | None:
+    def _save_cache(self) -> None:
+        if not self.config.cache_enabled or not self._cache_path:
+            return
+        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self._cache_path.write_text(json.dumps(self._cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _cache_key(self, prompt: str, model: str) -> str:
+        payload = json.dumps({"model": model, "prompt": prompt}, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _parse(content: str) -> tuple[float | None, str]:
+        try:
+            candidate = content.strip()
+            if candidate.startswith("```"):
+                candidate = candidate.strip("`").removeprefix("json").strip()
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                score = data.get("score")
+                reason = str(data.get("reason", ""))
+                if score is not None:
+                    return max(0.0, min(10.0, float(score))) / 10.0, reason
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+        match = re.search(r"\d+(?:\.\d+)?", content)
+        if not match:
+            return None, content.strip()
+        return max(0.0, min(10.0, float(match.group()))) / 10.0, content.strip()
+
+    def _score(self, prompt: str, model: str) -> JudgeResult | None:
+        key = self._cache_key(prompt, model)
+        if self.config.cache_enabled:
+            with self._lock:
+                cached = self._cache.get(key)
+            if cached:
+                cached_result = dict(cached)
+                cached_result["cached"] = True
+                return JudgeResult(**cached_result)
+
+        last_error: Exception | None = None
+        for attempt in range(self.config.retries + 1):
+            try:
+                response = self.client.post(
+                    "/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                content = payload["choices"][0]["message"]["content"]
+                score, reason = self._parse(str(content))
+                if score is None:
+                    return None
+                usage = payload.get("usage", {}) or {}
+                tokens = int(usage.get("total_tokens", 0) or 0)
+                result = JudgeResult(
+                    score=score,
+                    reason=reason,
+                    raw=str(content),
+                    model=model,
+                    tokens=tokens,
+                    estimated_cost=tokens / 1000 * self.config.cost_per_1k_tokens,
+                )
+                if self.config.cache_enabled:
+                    with self._lock:
+                        self._cache[key] = asdict(result)
+                        self._save_cache()
+                return result
+            except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+                last_error = exc
+                if attempt < self.config.retries and self.config.retry_backoff:
+                    time.sleep(self.config.retry_backoff * (2**attempt))
+        if self.config.skip_on_error:
+            return None
+        if last_error:
+            raise last_error
+        return None
+
+    def _evaluate(self, metric: str, prompt: str) -> JudgeResult | None:
+        votes: list[JudgeResult] = []
+        for model in self.models:
+            result = self._score(prompt, model)
+            if result:
+                votes.append(result)
+        if not votes:
+            return None
+        scores = [result.score for result in votes]
+        score = statistics.median(scores) if self.config.vote == "median" else sum(scores) / len(scores)
+        reasons = [result.reason for result in votes if result.reason]
+        return JudgeResult(
+            score=score,
+            reason=" | ".join(reasons),
+            raw=" | ".join(result.raw for result in votes),
+            cached=all(result.cached for result in votes),
+            model=", ".join(result.model for result in votes),
+            votes=scores,
+            tokens=sum(result.tokens for result in votes),
+            estimated_cost=sum(result.estimated_cost for result in votes),
+        )
+
+    def _prompt(self, metric: str, **values: str) -> str:
+        template = self.config.prompt_overrides.get(metric, _PROMPTS[metric])
+        return template.format(**values)
+
+    def evaluate_faithfulness(self, answer: str, contexts: list[str]) -> JudgeResult | None:
         if not answer or not contexts:
             return None
-        return self._score(
-            _FAITHFULNESS_PROMPT.format(contexts="\n---\n".join(contexts), answer=answer)
+        return self._evaluate(
+            "faithfulness",
+            self._prompt("faithfulness", contexts="\n---\n".join(contexts), answer=answer),
         )
 
-    def answer_relevancy(
-        self, question: str, answer: str, ground_truth: str = ""
-    ) -> float | None:
+    def evaluate_groundedness(self, answer: str, contexts: list[str]) -> JudgeResult | None:
+        if not answer or not contexts:
+            return None
+        return self._evaluate(
+            "groundedness",
+            self._prompt("groundedness", contexts="\n---\n".join(contexts), answer=answer),
+        )
+
+    def evaluate_context_relevance(self, question: str, contexts: list[str]) -> JudgeResult | None:
+        if not question or not contexts:
+            return None
+        return self._evaluate(
+            "context_relevance",
+            self._prompt("context_relevance", question=question, contexts="\n---\n".join(contexts)),
+        )
+
+    def evaluate_answer_relevancy(self, question: str, answer: str, ground_truth: str = "") -> JudgeResult | None:
         if not answer:
             return None
-        return self._score(
-            _RELEVANCY_PROMPT.format(
-                question=question, ground_truth=ground_truth or "(none)", answer=answer
-            )
+        return self._evaluate(
+            "answer_relevancy",
+            self._prompt(
+                "answer_relevancy",
+                question=question,
+                ground_truth=ground_truth or "(none)",
+                answer=answer,
+            ),
         )
+
+    def faithfulness(self, answer: str, contexts: list[str]) -> float | None:
+        result = self.evaluate_faithfulness(answer, contexts)
+        return result.score if result else None
+
+    def answer_relevancy(self, question: str, answer: str, ground_truth: str = "") -> float | None:
+        result = self.evaluate_answer_relevancy(question, answer, ground_truth)
+        return result.score if result else None

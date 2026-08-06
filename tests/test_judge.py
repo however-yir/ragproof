@@ -55,3 +55,24 @@ def test_http_error_skips_gracefully():
 def test_non_numeric_reply_returns_none():
     judge = _judge_with_reply("I cannot rate this.")
     assert judge.faithfulness("answer", ["ctx"]) is None
+
+
+def test_structured_reason_and_persistent_cache(tmp_path):
+    cache = tmp_path / "judge-cache.json"
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"score": 9, "reason": "supported"}'}}]})
+
+    config = JudgeConfig(enabled=True, cache_path=str(cache), cache_enabled=True)
+    first = Judge(config)
+    first.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
+    result = first.evaluate_faithfulness("answer", ["ctx"])
+    assert result and result.score == 0.9 and result.reason == "supported"
+
+    second = Judge(config)
+    second.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
+    cached = second.evaluate_faithfulness("answer", ["ctx"])
+    assert cached and cached.cached
+    assert calls["count"] == 1

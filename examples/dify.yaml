@@ -1,0 +1,15 @@
+name: dify-eval
+dataset: dataset.sample.jsonl
+adapter:
+  type: dify
+  base_url: https://api.dify.ai
+  endpoint: /v1/chat-messages
+  bearer_token_env: DIFY_API_KEY
+  extra_json:
+    user: ragproof-ci
+    response_mode: blocking
+  contexts_path: metadata.retriever_resources
+  context_id_path: document_id
+  citations_path: metadata.retriever_resources.*.document_id
+judge:
+  enabled: false

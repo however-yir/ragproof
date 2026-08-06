@@ -1,0 +1,14 @@
+name: http-mock-demo
+dataset: dataset.sample.jsonl
+adapter:
+  type: http
+  base_url: http://127.0.0.1:8765
+  endpoint: /
+  method: POST
+  json_field: question
+  answer_path: answer
+  contexts_path: contexts
+  context_id_path: id
+  citations_path: citations
+judge:
+  enabled: false

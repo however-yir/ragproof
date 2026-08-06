@@ -6,5 +6,8 @@ runs/
 report.html
 report.md
 .pytest_cache/
+.ragproof/
+.env
+*.csv
 dist/
 build/

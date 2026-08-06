@@ -1,0 +1,2 @@
+{"id":"zh-001","question":"什么是 RAG？","ground_truths":["检索增强生成。","Retrieval-augmented generation。"],"relevant_doc_ids":["doc-rag"],"expected_citations":["doc-rag"],"tags":["zh","intro"],"difficulty":"easy"}
+{"id":"zh-002","question":"当知识库没有答案时应该怎么做？","ground_truth":"应该明确说明不知道，而不是编造答案。","relevant_doc_ids":["doc-safety"],"tags":["zh","safety"],"difficulty":"hard","answerable":false}

@@ -1,0 +1,2 @@
+{"id":"en-billing-001","question":"How long is the invoice retention period?","ground_truth":"Invoices are retained for seven years.","relevant_doc_ids":["policy-invoice-retention"],"expected_citations":["policy-invoice-retention"],"tags":["en","enterprise","billing"],"difficulty":"medium"}
+{"id":"en-hr-001","question":"Who can approve a production access request?","ground_truth":"A service owner and security reviewer must approve it.","relevant_doc_ids":["policy-prod-access"],"tags":["en","enterprise","security"],"difficulty":"hard"}
