@@ -1,5 +1,11 @@
 # Roadmap
 
+## Shipped in 0.3.1
+
+- Core CI coverage contracts: runner 80%, HTTP adapter 70%, comparison engine 85%, plus a 75% project floor.
+- Tag releases validate the package version, attach source/wheel artifacts, and publish the matching CHANGELOG section to GitHub Releases.
+- PyPI publication is deliberately opt-in until this repository has a verified PyPI package identity.
+
 ## Shipped in 0.3.0
 
 - Run provenance fingerprints for dataset, normalized config, and selected sample set.

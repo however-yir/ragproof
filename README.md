@@ -1,6 +1,7 @@
 # ragproof — RAG 评测与回归测试 CLI | RAG Evaluation & Regression Testing
 
 [![CI](https://github.com/however-yir/ragproof/actions/workflows/ci.yml/badge.svg)](https://github.com/however-yir/ragproof/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/however-yir/ragproof?display_name=tag)](https://github.com/however-yir/ragproof/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -39,9 +40,14 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 ## Quick Start
 
 ```bash
-pip install ragproof   # PyPI
-# 或从源码安装：pip install -e ".[dev]"
+# 安装最新已验证发行版（GitHub Release tag）
+pip install "git+https://github.com/however-yir/ragproof.git@v0.3.1"
+
+# 或从源码安装（开发）
+pip install -e ".[dev]"
 ```
+
+每个 `vX.Y.Z` tag 都会校验包版本、构建 wheel/source archive、创建带 CHANGELOG 摘要的 GitHub Release。PyPI 同名包的归属尚未验证，因此默认不发布；详见 [发行说明](docs/RELEASING.md)。
 
 **30 秒离线体验**（mock adapter，无需任何 RAG 系统或模型）：
 
@@ -221,7 +227,8 @@ ragproof validate -c eval/ragproof.yaml
 
 ## Roadmap
 
-- [x] PyPI Trusted Publishing 发布流
+- [x] GitHub Release：tag/版本一致性校验、发行资产与 CHANGELOG 版本说明
+- [ ] PyPI 发布（确认唯一包名与 Trusted Publisher 归属后启用）
 - [x] LLM judge 结果缓存、结构化原因、多模型投票
 - [x] `compare` 支持相对回归阈值和 delta
 - [x] LangServe / LangChain / LlamaIndex / Dify / OpenAI 兼容预设

@@ -25,6 +25,12 @@ jobs:
       - name: Run tests
         run: pytest -q --cov=ragproof --cov-fail-under=75 --cov-report=term-missing --cov-report=xml
 
+      - name: Enforce core coverage floors
+        run: |
+          coverage report --include='ragproof/runner.py' --fail-under=80
+          coverage report --include='ragproof/adapters/http.py' --fail-under=70
+          coverage report --include='ragproof/compare.py' --fail-under=85
+
       - name: Lint
         run: ruff check ragproof tests
 

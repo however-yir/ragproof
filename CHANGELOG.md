@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-08-08
+
+- Added independent CI coverage floors for the runner (80%), HTTP adapter (70%), and comparison engine (85%).
+- Added tag/version validation, source and wheel release assets, and changelog-backed GitHub Release notes.
+- Made PyPI publication opt-in through the `RAGPROOF_PYPI_PUBLISH` repository variable until package ownership is verified.
+
 ## 0.3.0 — 2026-08-08
 
 - Added dataset/config/sample-selection fingerprints and provenance-safe baseline comparison.
