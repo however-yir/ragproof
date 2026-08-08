@@ -21,6 +21,7 @@ from ragproof.metrics.answers import claim_support, context_diversity, context_r
 from ragproof.metrics.citation import citation_span_overlap
 from ragproof.metrics.retrieval import rank_sensitivity
 from ragproof.report import render
+from ragproof.runner import _git_sha
 from ragproof.trend import bootstrap_interval, find_first_regression, summarize_runs
 from ragproof.adapters import build_adapter
 from ragproof.config import AdapterConfig
@@ -112,7 +113,9 @@ def test_cli_trend_bisect_and_judge_calibrate(tmp_path):
     assert calibrated.exit_code == 0 and "mae" in calibrated.output
 
 
-def test_deterministic_quality_helpers():
+def test_deterministic_quality_helpers(monkeypatch):
+    monkeypatch.setenv("GITHUB_SHA", "test-sha")
+    assert _git_sha() == "test-sha"
     assert token_count("中文 answer") == 2
     assert tokens_per_second("one two", 1000) == 2.0
     assert context_redundancy(["a b", "a c"]) > 0
