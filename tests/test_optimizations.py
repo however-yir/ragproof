@@ -116,6 +116,8 @@ def test_cli_trend_bisect_and_judge_calibrate(tmp_path):
 def test_deterministic_quality_helpers(monkeypatch):
     monkeypatch.setenv("GITHUB_SHA", "test-sha")
     assert _git_sha() == "test-sha"
+    monkeypatch.delenv("GITHUB_SHA")
+    assert _git_sha()
     assert token_count("中文 answer") == 2
     assert tokens_per_second("one two", 1000) == 2.0
     assert context_redundancy(["a b", "a c"]) > 0
