@@ -83,6 +83,53 @@ def validate_cmd(config_path: str, as_json: bool):
         click.echo(f"✔ valid: {config_path}")
 
 
+@cli.command("probe")
+@click.option("-c", "--config", "config_path", required=True, type=click.Path(exists=True))
+@click.option("--question", default="What is RAG?", show_default=True, help="One safe question to send to the configured endpoint.")
+@click.option("-o", "--output", type=click.Path(), help="Write the suggested adapter YAML to this path.")
+@click.option("--json", "as_json", is_flag=True, help="Print machine-readable candidate paths.")
+def probe_cmd(config_path: str, question: str, output: str | None, as_json: bool):
+    """Call an HTTP adapter once and suggest response-field mappings."""
+    from .adapters import build_adapter
+    from .config import RunConfig
+    from .probe import inspect_response, render_config
+
+    try:
+        config = RunConfig.load(config_path)
+        if config.adapter.type.lower() == "mock":
+            raise click.ClickException("probe requires an HTTP adapter; mock responses already have a known schema")
+        response = build_adapter(config.adapter).ask(question)
+        if response.error:
+            raise click.ClickException(f"probe request failed: {response.error}")
+        if not isinstance(response.raw, dict):
+            raise click.ClickException("probe endpoint did not return a JSON object")
+        mapping = inspect_response(response.raw)
+        starter = render_config(config.adapter, mapping)
+        if output:
+            destination = Path(output)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(starter, encoding="utf-8")
+        result = {
+            "question": question,
+            "latency_ms": response.latency_ms,
+            "streamed": response.streamed,
+            "mapping": {key: value for key, value in mapping.items() if key != "candidates"},
+            "candidates": mapping["candidates"],
+            "output": output,
+        }
+    except click.ClickException:
+        raise
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    if as_json:
+        click.echo(json.dumps(result, ensure_ascii=False))
+    elif output:
+        click.echo(f"✔ probe complete ({response.latency_ms:.1f} ms); starter config written to {output}")
+        click.echo(json.dumps(result["mapping"], ensure_ascii=False, indent=2))
+    else:
+        click.echo(f"✔ probe complete ({response.latency_ms:.1f} ms); suggested adapter config:\n\n{starter}")
+
+
 @cli.command("run")
 @click.option("-c", "--config", "config_path", required=True, type=click.Path(exists=True))
 @click.option("-o", "--output", default="runs/current.json", show_default=True)

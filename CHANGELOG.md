@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 — 2026-08-08
+
+- Added `ragproof probe` to inspect one HTTP JSON response and generate a safe starter adapter YAML.
+- Probe output reports candidate answer, context, citation, and document-ID paths without printing response values or headers.
+
 ## 0.3.1 — 2026-08-08
 
 - Added independent CI coverage floors for the runner (80%), HTTP adapter (70%), and comparison engine (85%).

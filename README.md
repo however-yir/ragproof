@@ -21,6 +21,7 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 
 | 能力 | 说明 |
 |---|---|
+| **接入探针** | `ragproof probe` 调用一次 HTTP API，发现答案 / 上下文 / 引用字段并生成安全的初始 YAML |
 | **确定性检索指标** | `recall@k` / `precision@k` / `MRR` / `hit_rate@k` — 不依赖任何 LLM，稳定可复现 |
 | **引用溯源指标** | `citation_coverage`（有上下文时是否给出引用）/ `citation_validity`（引用是否指向真实检索结果） |
 | **LLM-as-judge** | `faithfulness`（答案是否被上下文支撑 / 幻觉检测）/ `answer_relevancy`（答案是否切题），任何 OpenAI 兼容端点均可，**本地 Ollama 开箱即用** |
@@ -92,6 +93,16 @@ ragproof compare \
 # 3. 生成报告
 ragproof report runs/current.json -o report.html
 ```
+
+**第一次接入未知 API**：
+
+```bash
+ragproof probe -c examples/knowledgeops.yaml \
+  --question "What is RAG?" \
+  -o probe.yaml
+```
+
+`probe` 只打印字段路径和延迟，不打印响应内容或请求头；生成的 `probe.yaml` 仍需补回认证和完整请求模板。
 
 ## How It Works
 
