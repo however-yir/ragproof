@@ -14,6 +14,7 @@ _ANSWER_KEYS = {"answer", "answer_text", "content", "response", "text", "message
 _CONTEXT_KEYS = {"context", "contexts", "documents", "docs", "retrieved", "retrieved_documents"}
 _CITATION_KEYS = {"citation", "citations", "references", "sources"}
 _ID_KEYS = {"chunk_id", "doc_id", "document_id", "id", "source_id"}
+_TEXT_KEYS = {"text", "content", "page_content", "snippet"}
 
 
 def _walk(value: Any, path: str = "") -> Iterator[tuple[str, Any]]:
@@ -60,10 +61,12 @@ def inspect_response(payload: dict[str, Any]) -> dict[str, Any]:
     citations_path = _select_path(paths, _CITATION_KEYS, list)
 
     context_id_path = None
+    context_text_path = None
     if contexts_path:
         items = _dig(payload, contexts_path)
         if isinstance(items, list) and items and isinstance(items[0], dict):
             context_id_path = _select_scalar_path(list(_walk(items[0])), _ID_KEYS)
+            context_text_path = _select_scalar_path(list(_walk(items[0])), _TEXT_KEYS)
 
     citation_id_path = None
     if citations_path:
@@ -75,12 +78,20 @@ def inspect_response(payload: dict[str, Any]) -> dict[str, Any]:
         "answer_path": answer_path,
         "contexts_path": contexts_path,
         "context_id_path": context_id_path,
+        "context_text_path": context_text_path,
         "citations_path": citations_path,
         "citation_id_path": citation_id_path,
         "candidates": {
             "answer_paths": answer_candidates,
             "contexts_paths": context_candidates,
             "citations_paths": citation_candidates,
+        },
+        "confidence": {
+            "answer_path": 1.0 if answer_path else 0.0,
+            "contexts_path": 1.0 if contexts_path else 0.0,
+            "citations_path": 1.0 if citations_path else 0.0,
+            "context_id_path": 0.9 if context_id_path else 0.0,
+            "context_text_path": 0.9 if context_text_path else 0.0,
         },
     }
 
@@ -100,7 +111,9 @@ def render_config(adapter: AdapterConfig, mapping: dict[str, Any]) -> str:
             output_adapter[field] = value
     if adapter.stream:
         output_adapter["stream"] = True
-    for field in ("contexts_path", "context_id_path", "citations_path", "citation_id_path"):
+    if not adapter.query_param and not adapter.json_field and not adapter.request_template:
+        output_adapter["request_template"] = {"question": "{{question}}"}
+    for field in ("contexts_path", "context_id_path", "context_text_path", "citations_path", "citation_id_path", "citation_text_path"):
         value = mapping.get(field)
         if value:
             output_adapter[field] = value

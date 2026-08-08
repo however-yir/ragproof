@@ -2,7 +2,7 @@
 
 ## What a tag release does
 
-Pushing a tag such as `v0.3.1` starts the Release workflow. It verifies that the tag exactly matches `project.version`, builds the source distribution and wheel, extracts the matching section from `CHANGELOG.md`, and creates or updates the GitHub Release with those files attached.
+Pushing a tag such as `v0.4.0` starts the Release workflow. It verifies that the tag exactly matches `project.version`, builds the source distribution and wheel, extracts the matching section from `CHANGELOG.md`, and creates or updates the GitHub Release with those files attached.
 
 The release is deliberately idempotent: rerunning it updates the notes and replaces the two distribution assets instead of creating a second release.
 

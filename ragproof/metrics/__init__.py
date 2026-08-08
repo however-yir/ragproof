@@ -1,15 +1,22 @@
 from .answers import (
+    claim_support,
+    context_diversity,
+    context_redundancy,
     context_utilization,
     exact_match,
     is_empty_answer,
     refusal_rate,
     semantic_similarity,
+    token_count,
+    tokens_per_second,
+    unanswerable_correctness,
 )
 from .citation import (
     citation_coverage,
     citation_matches,
     citation_precision,
     citation_recall,
+    citation_span_overlap,
     citation_validity,
 )
 from .retrieval import (
@@ -20,7 +27,9 @@ from .retrieval import (
     ndcg_at_k,
     precision_at_k,
     recall_at_k,
+    rank_sensitivity,
 )
+from .embedding import embedding_similarity
 
 __all__ = [
     "recall_at_k",
@@ -30,14 +39,23 @@ __all__ = [
     "ndcg_at_k",
     "average_precision_at_k",
     "duplicate_rate",
+    "rank_sensitivity",
     "citation_coverage",
     "citation_validity",
     "citation_precision",
     "citation_recall",
     "citation_matches",
+    "citation_span_overlap",
     "exact_match",
     "semantic_similarity",
     "is_empty_answer",
     "refusal_rate",
     "context_utilization",
+    "context_redundancy",
+    "context_diversity",
+    "claim_support",
+    "unanswerable_correctness",
+    "token_count",
+    "tokens_per_second",
+    "embedding_similarity",
 ]

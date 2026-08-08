@@ -70,3 +70,59 @@ def context_utilization(answer: str, contexts: list[str]) -> float | None:
     if not answer_tokens:
         return 0.0
     return len(answer_tokens.intersection(context_tokens)) / len(answer_tokens)
+
+
+def token_count(text: str, *, tokenizer: str = "heuristic") -> int:
+    """Count output tokens with a dependency-free or explicitly simple tokenizer."""
+    if tokenizer == "chars":
+        return len(text)
+    if tokenizer == "whitespace":
+        return len(text.split())
+    return len(_TOKEN_RE.findall(normalize_answer(text)))
+
+
+def tokens_per_second(text: str, latency_ms: float | None, *, tokenizer: str = "heuristic") -> float | None:
+    if latency_ms is None or latency_ms <= 0:
+        return None
+    return token_count(text, tokenizer=tokenizer) / (latency_ms / 1000)
+
+
+def context_redundancy(contexts: list[str]) -> float | None:
+    """Fraction of context tokens repeated across retrieved chunks."""
+    if not contexts:
+        return None
+    total = 0
+    unique: set[str] = set()
+    for context in contexts:
+        tokens = _TOKEN_RE.findall(normalize_answer(context))
+        total += len(tokens)
+        unique.update(tokens)
+    return 0.0 if total == 0 else 1.0 - len(unique) / total
+
+
+def context_diversity(contexts: list[str]) -> float | None:
+    """Inverse redundancy score; useful for spotting duplicate retrieval chunks."""
+    redundancy = context_redundancy(contexts)
+    return None if redundancy is None else 1.0 - redundancy
+
+
+def claim_support(answer: str, contexts: list[str]) -> float | None:
+    """Approximate claim-level support by sentence/token overlap.
+
+    This is intentionally deterministic and conservative; teams can replace it
+    with a judge metric while keeping the same output field.
+    """
+    if not answer or not contexts:
+        return None
+    context_tokens = set(_TOKEN_RE.findall(normalize_answer(" ".join(contexts))))
+    claims = [part.strip() for part in re.split(r"[.!?。！？；;]+", answer) if part.strip()]
+    if not claims:
+        return 0.0
+    supported = sum(bool(set(_TOKEN_RE.findall(normalize_answer(claim))) & context_tokens) for claim in claims)
+    return supported / len(claims)
+
+
+def unanswerable_correctness(answer: str, answerable: bool) -> float:
+    """Score refusal behavior: refuse unanswerable questions, answer others."""
+    refused = refusal_rate(answer, answerable=True) == 1.0
+    return 1.0 if (refused == (not answerable)) else 0.0

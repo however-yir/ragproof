@@ -1,0 +1,12 @@
+# Reusable CI policy for ragproof compare.
+thresholds:
+  recall@5: 0.70
+  faithfulness: 0.75
+max_thresholds:
+  error_rate: 0.10
+  p95_latency_ms: 1500
+min_sample_count: 3
+min_coverage:
+  contexts: 0.90
+required_fields:
+  - answers

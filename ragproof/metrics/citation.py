@@ -6,6 +6,8 @@ citation_validity: fraction of citations that point at actually-retrieved docs.
 
 from __future__ import annotations
 
+import re
+
 
 def citation_coverage(citations: list[str], contexts: list[str]) -> float | None:
     """1.0 if the answer carries at least one citation when contexts were retrieved."""
@@ -41,3 +43,15 @@ def citation_matches(citations: list[str], context_ids: list[str]) -> list[dict[
     """Return per-citation evidence used by the report's explainability view."""
     known = set(context_ids)
     return [{"citation": citation, "valid": citation in known} for citation in citations]
+
+
+def citation_span_overlap(answer: str, citations: list[str], contexts: list[str]) -> float | None:
+    """Estimate how much cited context text is reflected in the answer."""
+    if not citations or not contexts or not answer:
+        return None
+    answer_tokens = set(re.findall(r"[\w\u4e00-\u9fff]+", answer.lower()))
+    cited_text = " ".join(context for context, citation in zip(contexts, citations, strict=False) if citation)
+    cited_tokens = set(re.findall(r"[\w\u4e00-\u9fff]+", cited_text.lower()))
+    if not cited_tokens:
+        return 0.0
+    return len(answer_tokens & cited_tokens) / len(cited_tokens)

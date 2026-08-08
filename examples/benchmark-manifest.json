@@ -1,0 +1,20 @@
+{
+  "name": "ragproof-starter-benchmark",
+  "schema": "ragproof.dataset.v1",
+  "datasets": [
+    {
+      "id": "sample-en",
+      "path": "dataset.sample.jsonl",
+      "language": "en",
+      "license": "CC0-1.0",
+      "purpose": "offline smoke and adapter contract testing"
+    },
+    {
+      "id": "sample-zh",
+      "path": "dataset.zh.jsonl",
+      "language": "zh",
+      "license": "CC0-1.0",
+      "purpose": "Chinese slicing and tokenization smoke testing"
+    }
+  ]
+}

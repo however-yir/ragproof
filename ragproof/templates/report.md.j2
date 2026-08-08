@@ -58,6 +58,15 @@
 {% endfor %}
 {% endif %}
 
+{% if run.comparison_samples %}## Baseline / Current Sample Diff
+
+| ID | Baseline answer | Current answer |
+|---|---|---|
+{% for item in run.comparison_samples -%}
+| `{{ item.id }}` | {{ item.baseline_answer[:180] | replace('|', '&#124;') }} | {{ item.current_answer[:180] | replace('|', '&#124;') }} |
+{% endfor %}
+{% endif %}
+
 ## Per-sample Results
 
 | ID | Question | Answer | Tags | Retrieved IDs | Metrics | Error |

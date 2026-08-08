@@ -60,6 +60,19 @@ CANDIDATE:
 }
 
 
+def calibration_summary(predictions: list[float], labels: list[float]) -> dict[str, float]:
+    """Return simple golden-label calibration diagnostics for judge scores."""
+    if len(predictions) != len(labels) or not predictions:
+        raise ValueError("predictions and labels must have the same non-zero length")
+    errors = [float(prediction) - float(label) for prediction, label in zip(predictions, labels, strict=True)]
+    return {
+        "count": float(len(errors)),
+        "mae": sum(abs(error) for error in errors) / len(errors),
+        "bias": sum(errors) / len(errors),
+        "brier": sum(error * error for error in errors) / len(errors),
+    }
+
+
 @dataclass
 class JudgeResult:
     score: float
@@ -83,12 +96,18 @@ class Judge:
         )
         self._lock = threading.RLock()
         self._cache: dict[str, dict[str, Any]] = {}
+        self._failures = 0
         self._cache_path = Path(config.cache_path).expanduser() if config.cache_path else None
         self._load_cache()
 
     @property
     def models(self) -> list[str]:
         return list(dict.fromkeys(self.config.models or [self.config.model]))
+
+    @property
+    def prompt_fingerprint(self) -> str:
+        payload = json.dumps({"version": self.config.prompt_version, "overrides": self.config.prompt_overrides}, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _load_cache(self) -> None:
         if not self.config.cache_enabled or not self._cache_path or not self._cache_path.exists():
@@ -128,6 +147,8 @@ class Judge:
         return max(0.0, min(10.0, float(match.group()))) / 10.0, content.strip()
 
     def _score(self, prompt: str, model: str) -> JudgeResult | None:
+        if self.config.max_failures is not None and self._failures >= self.config.max_failures:
+            return None
         key = self._cache_key(prompt, model)
         if self.config.cache_enabled:
             with self._lock:
@@ -171,6 +192,9 @@ class Judge:
                 return result
             except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
                 last_error = exc
+                self._failures += 1
+                if self.config.max_failures is not None and self._failures >= self.config.max_failures:
+                    break
                 if attempt < self.config.retries and self.config.retry_backoff:
                     time.sleep(self.config.retry_backoff * (2**attempt))
         if self.config.skip_on_error:

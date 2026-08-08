@@ -17,6 +17,12 @@ inputs:
   group-thresholds:
     description: Newline-separated group thresholds such as tags:zh:faithfulness=0.75.
     required: false
+  max-thresholds:
+    description: Newline-separated maximum gates such as error_rate<=0.1.
+    required: false
+  policy:
+    description: YAML/JSON threshold policy file.
+    required: false
   required-metrics:
     description: Newline-separated metrics that must be available for every selected sample.
     required: false
@@ -63,6 +69,8 @@ runs:
         RAGPROOF_CURRENT: ${{ inputs.output }}
         RAGPROOF_THRESHOLDS: ${{ inputs.thresholds }}
         RAGPROOF_GROUP_THRESHOLDS: ${{ inputs['group-thresholds'] }}
+        RAGPROOF_MAX_THRESHOLDS: ${{ inputs['max-thresholds'] }}
+        RAGPROOF_POLICY: ${{ inputs.policy }}
       run: |
         set -euo pipefail
         threshold_args=()
@@ -73,7 +81,13 @@ runs:
         while IFS= read -r threshold; do
           [[ -n "$threshold" ]] && group_args+=(--group-threshold "$threshold")
         done <<< "$RAGPROOF_GROUP_THRESHOLDS"
-        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}"
+        max_args=()
+        while IFS= read -r threshold; do
+          [[ -n "$threshold" ]] && max_args+=(--max "$threshold")
+        done <<< "$RAGPROOF_MAX_THRESHOLDS"
+        policy_args=()
+        [[ -n "$RAGPROOF_POLICY" ]] && policy_args+=(--policy "$RAGPROOF_POLICY")
+        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}" "${max_args[@]}" "${policy_args[@]}"
 
     - name: Render report and summary
       if: ${{ always() }}
@@ -84,6 +98,8 @@ runs:
         set -euo pipefail
         if [[ -f "$RAGPROOF_OUTPUT" ]]; then
           ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.html"
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.xml"
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.sarif"
           python - "$RAGPROOF_OUTPUT" <<'PY'
         import json
         import os
@@ -102,3 +118,5 @@ runs:
         path: |
           ${{ inputs.output }}
           ${{ inputs.output }}.html
+          ${{ inputs.output }}.xml
+          ${{ inputs.output }}.sarif

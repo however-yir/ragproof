@@ -22,7 +22,11 @@ from .metrics import (
     citation_matches,
     citation_precision,
     citation_recall,
+    citation_span_overlap,
     citation_validity,
+    claim_support,
+    context_diversity,
+    context_redundancy,
     context_utilization,
     duplicate_rate,
     exact_match,
@@ -32,10 +36,15 @@ from .metrics import (
     ndcg_at_k,
     precision_at_k,
     recall_at_k,
+    rank_sensitivity,
     refusal_rate,
     semantic_similarity,
+    token_count,
+    tokens_per_second,
+    unanswerable_correctness,
 )
 from .metrics.judge import Judge, JudgeResult
+from .metrics.embedding import embedding_similarity
 from .provenance import sha256_file, sha256_json, sha256_values
 
 
@@ -64,7 +73,15 @@ def _judge_detail(result: JudgeResult | None) -> dict[str, Any] | None:
     }
 
 
-def _evaluate_sample(sample: ds.Sample, adapter, judge: Judge | None, top_ks: list[int]) -> dict[str, Any]:
+def _evaluate_sample(
+    sample: ds.Sample,
+    adapter,
+    judge: Judge | None,
+    top_ks: list[int],
+    *,
+    tokenizer: str = "heuristic",
+    embedding_model: str | None = None,
+) -> dict[str, Any]:
     response = adapter.ask(sample.question)
     metrics: dict[str, float | None] = {}
     judge_details: dict[str, Any] = {}
@@ -75,17 +92,27 @@ def _evaluate_sample(sample: ds.Sample, adapter, judge: Judge | None, top_ks: li
             metrics[f"ndcg@{k}"] = ndcg_at_k(response.context_ids, sample.relevant_doc_ids, k)
             metrics[f"map@{k}"] = average_precision_at_k(response.context_ids, sample.relevant_doc_ids, k)
             metrics[f"hit_rate@{k}"] = hit_rate(response.context_ids, sample.relevant_doc_ids, k)
+            metrics[f"rank_sensitivity@{k}"] = rank_sensitivity(response.context_ids, sample.relevant_doc_ids, k)
         metrics["mrr"] = mrr(response.context_ids, sample.relevant_doc_ids)
         metrics["duplicate_rate"] = duplicate_rate(response.context_ids)
         metrics["citation_coverage"] = citation_coverage(response.citations, response.contexts)
         metrics["citation_validity"] = citation_validity(response.citations, response.context_ids)
         metrics["citation_precision"] = citation_precision(response.citations, response.context_ids)
         metrics["citation_recall"] = citation_recall(response.citations, sample.expected_citations)
+        metrics["citation_span_overlap"] = citation_span_overlap(response.answer, response.citations, response.contexts)
         metrics["exact_match"] = exact_match(response.answer, sample.ground_truths)
         metrics["semantic_similarity"] = semantic_similarity(response.answer, sample.ground_truths)
+        if embedding_model:
+            metrics["embedding_similarity"] = embedding_similarity(response.answer, sample.ground_truths, embedding_model)
         metrics["empty_answer_rate"] = is_empty_answer(response.answer)
         metrics["refusal_rate"] = refusal_rate(response.answer, sample.answerable)
+        metrics["unanswerable_correctness"] = unanswerable_correctness(response.answer, sample.answerable)
         metrics["context_utilization"] = context_utilization(response.answer, response.contexts)
+        metrics["context_redundancy"] = context_redundancy(response.contexts)
+        metrics["context_diversity"] = context_diversity(response.contexts)
+        metrics["claim_support"] = claim_support(response.answer, response.contexts)
+        metrics["output_token_count"] = float(token_count(response.answer, tokenizer=tokenizer))
+        metrics["tokens_per_second"] = tokens_per_second(response.answer, response.latency_ms, tokenizer=tokenizer)
         if sample.negative_doc_ids:
             negative = set(sample.negative_doc_ids)
             metrics["negative_hit_rate"] = 1.0 if negative.intersection(response.context_ids) else 0.0
@@ -105,6 +132,9 @@ def _evaluate_sample(sample: ds.Sample, adapter, judge: Judge | None, top_ks: li
                 metrics[name] = result.score if result else None
                 judge_details[name] = _judge_detail(result)
             metrics["hallucination_rate"] = 1.0 - faithfulness.score if faithfulness else None
+            votes = [vote for detail in judge_details.values() for vote in (detail.get("votes") or [])]
+            if votes:
+                metrics["judge_agreement"] = max(0.0, 1.0 - (max(votes) - min(votes)))
     return {
         "id": sample.id,
         "question": sample.question,
@@ -117,9 +147,12 @@ def _evaluate_sample(sample: ds.Sample, adapter, judge: Judge | None, top_ks: li
         "tags": sample.tags,
         "difficulty": sample.difficulty,
         "answerable": sample.answerable,
+        "metadata": sample.metadata,
         "latency_ms": response.latency_ms,
         "first_token_latency_ms": response.first_token_latency_ms,
         "output_char_count": response.output_char_count,
+        "output_token_count": token_count(response.answer, tokenizer=tokenizer),
+        "tokens_per_second": tokens_per_second(response.answer, response.latency_ms, tokenizer=tokenizer),
         "streamed": response.streamed,
         "error": response.error,
         "error_type": response.error_type,
@@ -188,13 +221,24 @@ def _coverage(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _group_aggregates(results: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
-    groups: dict[str, dict[str, list[dict[str, Any]]]] = {"tags": {}, "difficulty": {}}
+def _dimension_values(result: dict[str, Any], dimension: str) -> list[str]:
+    if dimension == "tags":
+        return [str(value) for value in result.get("tags", [])] or ["untagged"]
+    if dimension == "answerable":
+        return [str(bool(result.get("answerable"))).lower()]
+    if dimension.startswith("metadata."):
+        key = dimension.split(".", 1)[1]
+        value = (result.get("metadata") or {}).get(key, "missing")
+        return [str(value)]
+    return [str(result.get(dimension, "missing"))]
+
+
+def _group_aggregates(results: list[dict[str, Any]], dimensions: list[str]) -> dict[str, dict[str, dict[str, float]]]:
+    groups: dict[str, dict[str, list[dict[str, Any]]]] = {dimension: {} for dimension in dimensions}
     for result in results:
-        for tag in result.get("tags", []):
-            groups["tags"].setdefault(tag, []).append(result)  # type: ignore[arg-type]
-        difficulty = result.get("difficulty", "unspecified")
-        groups["difficulty"].setdefault(difficulty, []).append(result)  # type: ignore[arg-type]
+        for dimension in dimensions:
+            for value in _dimension_values(result, dimension):
+                groups[dimension].setdefault(value, []).append(result)  # type: ignore[arg-type]
     return {
         dimension: {name: _aggregate(items) for name, items in values.items()}
         for dimension, values in groups.items()
@@ -203,12 +247,14 @@ def _group_aggregates(results: list[dict[str, Any]]) -> dict[str, dict[str, dict
 
 def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
     started = time.perf_counter()
-    samples = ds.load(config.dataset)
+    samples = ds.load(config.dataset, reject_duplicates=config.deduplicate_questions)
     samples = ds.filter_samples(
         samples,
         limit=config.sample_limit,
         include_tags=set(config.include_tags),
         exclude_tags=set(config.exclude_tags),
+        stratify_by=config.stratify_by,
+        seed=config.seed,
     )
     if config.seed is not None:
         samples = list(samples)
@@ -220,7 +266,19 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
     top_ks = config.effective_top_ks()
 
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
-        results = list(pool.map(lambda sample: _evaluate_sample(sample, adapter, judge, top_ks), samples))
+        results = list(
+            pool.map(
+                lambda sample: _evaluate_sample(
+                    sample,
+                    adapter,
+                    judge,
+                    top_ks,
+                    tokenizer=config.tokenizer,
+                    embedding_model=config.embedding_model,
+                ),
+                samples,
+            )
+        )
 
     total_cost = sum(
         detail.get("estimated_cost", 0.0)
@@ -239,15 +297,20 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         "dataset_sample_count": ds.samples_count(config.dataset),
         "sample_count": len(samples),
         "provenance": {
-            "schema_version": 1,
+            "schema_version": 2,
             "dataset_sha256": sha256_file(config.dataset),
             "config_sha256": sha256_json(config.summary()),
             "selected_sample_ids_sha256": sha256_values(sample.id for sample in samples),
+            "dataset_manifest": ds.manifest(config.dataset),
+            "judge_prompt_version": config.judge.prompt_version,
+            "judge_prompt_sha256": judge.prompt_fingerprint if judge else None,
+            "adapter_type": config.adapter.type,
+            "group_by": config.group_by,
         },
         "top_ks": top_ks,
         "config_summary": config.summary(),
         "aggregate": _aggregate(results),
-        "groups": _group_aggregates(results),
+        "groups": _group_aggregates(results, config.group_by),
         "coverage": coverage,
         "cost": {"estimated_total": total_cost},
         "results": results,
@@ -267,4 +330,25 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
             + ", ".join(missing)
             + f"; inspect coverage in {out}"
         )
+    if config.min_sample_count is not None and len(samples) < config.min_sample_count:
+        raise ValueError(f"selected sample count {len(samples)} is below min_sample_count {config.min_sample_count}")
+    required_fields = sorted(set(config.required_fields))
+    missing_fields = [
+        field
+        for field in required_fields
+        if coverage["fields"].get(field, {}).get("rate", 0.0) < 1.0
+    ]
+    if missing_fields:
+        raise ValueError(
+            "required fields are unavailable for every selected sample: "
+            + ", ".join(missing_fields)
+            + f"; inspect coverage in {out}"
+        )
+    coverage_failures = [
+        f"{field}<{minimum:.1%}"
+        for field, minimum in config.min_coverage.items()
+        if coverage["metrics"].get(field, coverage["fields"].get(field, {})).get("rate", 0.0) < minimum
+    ]
+    if coverage_failures:
+        raise ValueError("coverage gates failed: " + ", ".join(coverage_failures))
     return report

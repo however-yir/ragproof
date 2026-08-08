@@ -16,6 +16,8 @@ class RAGResponse(BaseModel):
     latency_ms: float = 0.0
     first_token_latency_ms: float | None = None
     output_char_count: int | None = None
+    output_token_count: int | None = None
+    tokens_per_second: float | None = None
     streamed: bool = False
     error: str | None = None
     error_type: str | None = None

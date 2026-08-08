@@ -30,6 +30,9 @@ jobs:
           coverage report --include='ragproof/runner.py' --fail-under=80
           coverage report --include='ragproof/adapters/http.py' --fail-under=70
           coverage report --include='ragproof/compare.py' --fail-under=85
+          coverage report --include='ragproof/dataset.py' --fail-under=65
+          coverage report --include='ragproof/report.py' --fail-under=60
+          coverage report --include='ragproof/cli.py' --fail-under=60
 
       - name: Lint
         run: ruff check ragproof tests
@@ -49,3 +52,8 @@ jobs:
           ragproof compare --baseline runs/ci.json --current runs/ci.json --threshold "error_rate=0.0"
           ragproof report runs/ci.json -o runs/ci-report.html
           ragproof report runs/ci.json -o runs/ci-report.csv
+          ragproof report runs/ci.json -o runs/ci-report.xml
+          ragproof report runs/ci.json -o runs/ci-report.sarif
+          ragproof dataset-manifest examples/dataset.sample.jsonl --json
+          ragproof dataset-lint examples/dataset.sample.jsonl
+          ragproof trend runs/ci.json -o runs/ci-trend.json

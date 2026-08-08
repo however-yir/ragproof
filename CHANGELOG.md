@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-08-08
+
+- Added lower-is-better `--max` gates, reusable YAML policies, coverage/sample gates, provenance detail, and direction-aware recommendations.
+- Added configurable `group_by`, stratified sampling, dataset manifests, CSV/JSON/XLSX/Parquet import hooks, PII/secret redaction, near-duplicate linting, and a starter benchmark manifest.
+- Added claim-support, citation-span, context diversity/redundancy, rank-sensitivity, unanswerable-correctness, token throughput, judge agreement, and optional embedding similarity metrics.
+- Added multi-run trend summaries with bootstrap intervals, local regression bisect, JUnit/SARIF output, side-by-side baseline samples, group heatmap data, and richer probe output.
+- Added explicit missing-environment diagnostics, custom streaming token paths/done markers, async-compatible adapter calls, judge prompt fingerprints, and circuit-breaker limits.
+- Extended the reusable GitHub Action and CI smoke gates with policy inputs, HTML/XML/SARIF artifacts, dataset lint, manifests, and trend output.
+
 ## 0.3.2 — 2026-08-08
 
 - Added `ragproof probe` to inspect one HTTP JSON response and generate a safe starter adapter YAML.

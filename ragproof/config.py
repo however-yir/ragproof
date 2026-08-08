@@ -13,9 +13,28 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 _ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
 
 
-def _expand_env(text: str) -> str:
-    """Expand ``${VAR}`` references using environment variables."""
-    return _ENV_PATTERN.sub(lambda m: os.environ.get(m.group(1), ""), text)
+def _expand_env(text: str) -> tuple[str, list[str]]:
+    """Expand ``${VAR}`` references and retain missing names for validation."""
+    missing: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        value = os.environ.get(name)
+        if value is None:
+            missing.append(name)
+            return ""
+        return value
+
+    return _ENV_PATTERN.sub(replace, text), sorted(set(missing))
+
+
+def _redact_value(value: Any) -> Any:
+    """Redact common credential-shaped values in summaries and diagnostics."""
+    if not isinstance(value, str):
+        return value
+    if len(value) >= 16 and any(character in value for character in ("_", "-")):
+        return "***"
+    return value
 
 
 class AdapterConfig(BaseModel):
@@ -44,10 +63,14 @@ class AdapterConfig(BaseModel):
     extra_params: dict[str, Any] = Field(default_factory=dict)
     extra_json: dict[str, Any] = Field(default_factory=dict)
     stream: bool = False
+    stream_token_path: str | None = None
+    stream_done_markers: list[str] = Field(default_factory=lambda: ["[DONE]"])
+    tokenizer: str = "heuristic"  # heuristic | whitespace | chars
     # Response mapping (dotted paths into the JSON response).
     answer_path: str = "answer"
     contexts_path: str | None = None
     context_id_path: str | None = None
+    context_text_path: str | None = None
     citations_path: str | None = None
     citation_id_path: str | None = None
     citation_text_path: str | None = None
@@ -102,6 +125,8 @@ class JudgeConfig(BaseModel):
     cache_path: str | None = None
     cost_per_1k_tokens: float = 0.0
     prompt_overrides: dict[str, str] = Field(default_factory=dict)
+    prompt_version: str = "builtin-v1"
+    max_failures: int | None = None
 
     @field_validator("timeout")
     @classmethod
@@ -146,9 +171,18 @@ class RunConfig(BaseModel):
     seed: int | None = None
     group_by: list[str] = Field(default_factory=lambda: ["tags", "difficulty"])
     required_metrics: list[str] = Field(default_factory=list)
+    required_fields: list[str] = Field(default_factory=list)
+    min_sample_count: int | None = None
+    min_coverage: dict[str, float] = Field(default_factory=dict)
+    stratify_by: str | None = None
+    deduplicate_questions: bool = True
+    redact_sensitive: bool = True
+    embedding_model: str | None = None
+    tokenizer: str = "heuristic"
     # These values are copied into run metadata when supplied by CI or a caller.
     git_sha: str | None = None
     config_path: str | None = Field(default=None, exclude=True)
+    missing_env_vars: list[str] = Field(default_factory=list, exclude=True)
 
     @field_validator("concurrency")
     @classmethod
@@ -181,7 +215,8 @@ class RunConfig(BaseModel):
     @classmethod
     def load(cls, path: str | Path) -> "RunConfig":
         config_path = Path(path).resolve()
-        raw = yaml.safe_load(_expand_env(config_path.read_text(encoding="utf-8"))) or {}
+        expanded, missing_env_vars = _expand_env(config_path.read_text(encoding="utf-8"))
+        raw = yaml.safe_load(expanded) or {}
         config = cls.model_validate(raw)
         dataset_path = Path(config.dataset)
         if not dataset_path.is_absolute():
@@ -190,6 +225,7 @@ class RunConfig(BaseModel):
             # intentionally uses a repository-root path such as examples/foo.
             config.dataset = str(relative_to_config if relative_to_config.exists() else dataset_path)
         config.config_path = str(config_path)
+        config.missing_env_vars = missing_env_vars
         return config
 
     def effective_top_ks(self) -> list[int]:
@@ -200,7 +236,9 @@ class RunConfig(BaseModel):
         adapter = self.adapter.model_dump(exclude_none=True)
         headers = adapter.get("headers", {})
         adapter["headers"] = {
-            key: "***" if any(token in key.lower() for token in ("key", "token", "auth", "secret")) else value
+            key: "***"
+            if any(token in key.lower() for token in ("key", "token", "auth", "secret", "password"))
+            else _redact_value(value)
             for key, value in headers.items()
         }
         return {
@@ -215,12 +253,21 @@ class RunConfig(BaseModel):
             "include_tags": self.include_tags,
             "exclude_tags": self.exclude_tags,
             "seed": self.seed,
+            "group_by": self.group_by,
+            "required_fields": sorted(set(self.required_fields)),
+            "min_sample_count": self.min_sample_count,
+            "min_coverage": self.min_coverage,
+            "stratify_by": self.stratify_by,
+            "tokenizer": self.tokenizer,
+            "embedding_model": self.embedding_model,
             "required_metrics": sorted(set(self.required_metrics)),
         }
 
     def validation_errors(self) -> list[str]:
         """Return actionable, user-facing errors beyond Pydantic type checks."""
         errors: list[str] = []
+        if self.missing_env_vars:
+            errors.append("missing environment variables: " + ", ".join(self.missing_env_vars))
         if not Path(self.dataset).exists():
             errors.append(f"dataset does not exist: {self.dataset}")
         if self.adapter.type.lower() in {"http", "langserve", "dify", "openai", "llamaindex", "langchain"}:
@@ -230,4 +277,8 @@ class RunConfig(BaseModel):
                 errors.append("adapter.endpoint is required for an HTTP adapter")
         if self.sample_limit is not None and self.sample_limit < 1:
             errors.append("sample_limit must be at least 1 when provided")
+        if self.min_sample_count is not None and self.min_sample_count < 1:
+            errors.append("min_sample_count must be at least 1 when provided")
+        if any(not 0 <= value <= 1 for value in self.min_coverage.values()):
+            errors.append("min_coverage values must be between 0 and 1")
         return errors

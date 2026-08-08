@@ -44,7 +44,18 @@
   {% if run.comparison %}
   <h2>Baseline comparison <span class="{{ 'good' if run.comparison.passed else 'bad' }}">{{ 'PASS' if run.comparison.passed else 'FAIL' }}</span></h2>
   <ul>{% for item in run.comparison.results %}<li class="{{ 'good' if item.passed else 'bad' }}">{{ item.metric }}: {{ item.reason }}</li>{% endfor %}</ul>
+  {% if run.comparison_samples %}<details><summary>Baseline / current sample diff ({{ run.comparison_samples|length }})</summary>
+    <table><thead><tr><th>ID</th><th>Baseline answer</th><th>Current answer</th></tr></thead><tbody>
+    {% for item in run.comparison_samples %}<tr><td><code>{{ item.id }}</code></td><td class="answer">{{ item.baseline_answer }}</td><td class="answer">{{ item.current_answer }}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>{% endif %}
   {% endif %}
+
+  {% if run.groups %}<details><summary>Group heatmap data</summary>
+    <table><thead><tr><th>Dimension</th><th>Group</th><th>Metrics</th></tr></thead><tbody>
+    {% for dimension, groups in run.groups.items() %}{% for group, values in groups.items() %}<tr><td>{{ dimension }}</td><td>{{ group }}</td><td>{% for name,value in values.items() %}<code>{{ name }}={{ '%.3f'|format(value) }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</td></tr>{% endfor %}{% endfor %}
+    </tbody></table>
+  </details>{% endif %}
 
   <div class="toolbar">
     <input id="filter" placeholder="Filter question, id, tag, error…">

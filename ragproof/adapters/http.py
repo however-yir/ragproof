@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
+import asyncio
+import re
 from typing import Any
 
 import httpx
@@ -50,6 +52,12 @@ def _as_list(value: Any) -> list[Any]:
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
+
+
+def _safe_error(exc: Exception) -> str:
+    """Keep diagnostics useful without leaking query tokens or large bodies."""
+    message = str(exc)[:500]
+    return re.sub(r"(?i)(token|api[_-]?key|secret|password)=([^&\s]+)", r"\1=[REDACTED]", message)
 
 
 class HTTPAdapter:
@@ -106,14 +114,15 @@ class HTTPAdapter:
         return "".join(answer_parts), last_payload
 
     @staticmethod
-    def _stream_token(payload: Any) -> str:
+    def _stream_token(payload: Any, path: str | None = None) -> str:
         if not isinstance(payload, dict):
             return ""
-        token = _dig(payload, "choices.0.delta.content") or _dig(payload, "choices.0.message.content")
+        token = _dig(payload, path) if path else None
+        token = token or _dig(payload, "choices.0.delta.content") or _dig(payload, "choices.0.message.content")
         return "" if token is None else str(token)
 
     def _consume_stream(
-        self, response: httpx.Response, started: float
+        self, response: httpx.Response, started: float, token_path: str | None, done_markers: list[str]
     ) -> tuple[str, dict[str, Any] | None, float | None, int]:
         """Consume an SSE/OpenAI-compatible response without buffering it first."""
         answer_parts: list[str] = []
@@ -131,7 +140,7 @@ class HTTPAdapter:
                 line = line[len("data:data:"):].strip()
             elif line.startswith("data:"):
                 line = line[5:].strip()
-            if not line or line == "[DONE]":
+            if not line or line in done_markers:
                 continue
             try:
                 payload = json.loads(line)
@@ -139,7 +148,7 @@ class HTTPAdapter:
                 token = line
                 payload = None
             else:
-                token = self._stream_token(payload)
+                token = self._stream_token(payload, token_path)
                 if isinstance(payload, dict):
                     last_payload = payload
             if not token:
@@ -162,7 +171,9 @@ class HTTPAdapter:
             if cfg.stream:
                 with self.client.stream(cfg.method, cfg.endpoint, params=params or None, json=json_body) as response:
                     response.raise_for_status()
-                    answer, data, first_token_latency, output_chars = self._consume_stream(response, start)
+                    answer, data, first_token_latency, output_chars = self._consume_stream(
+                        response, start, cfg.stream_token_path, cfg.stream_done_markers
+                    )
             else:
                 response = self.client.request(cfg.method, cfg.endpoint, params=params or None, json=json_body)
                 response.raise_for_status()
@@ -172,16 +183,16 @@ class HTTPAdapter:
                     answer = response.text
         except httpx.TimeoutException as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="timeout")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="timeout")
         except httpx.HTTPStatusError as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="http_status")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="http_status")
         except httpx.HTTPError as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="http_error")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="http_error")
         except (TypeError, ValueError, KeyError) as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="response_parse")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="response_parse")
 
         data = data or {}
         mapped_answer = _dig(data, cfg.answer_path) if not answer else answer
@@ -192,7 +203,8 @@ class HTTPAdapter:
             if isinstance(item, str):
                 contexts.append(item)
             elif isinstance(item, dict):
-                contexts.append(str(item.get("text") or item.get("content") or item))
+                mapped_text = _dig(item, cfg.context_text_path) if cfg.context_text_path else None
+                contexts.append(str(mapped_text or item.get("text") or item.get("content") or item))
                 if cfg.context_id_path:
                     cid = _dig(item, cfg.context_id_path)
                     if cid is not None:
@@ -235,3 +247,7 @@ class HTTPAdapter:
             if attempt < self.config.retries and self.config.retry_backoff:
                 time.sleep(self.config.retry_backoff * (2**attempt))
         return last_response or RAGResponse(question=question, answer="", error="request failed", error_type="unknown")
+
+    async def aask(self, question: str) -> RAGResponse:
+        """Async-compatible adapter entry point for event-loop based callers."""
+        return await asyncio.to_thread(self.ask, question)

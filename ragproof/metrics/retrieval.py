@@ -76,3 +76,15 @@ def duplicate_rate(retrieved: list[str]) -> float:
     if not retrieved:
         return 0.0
     return (len(retrieved) - len(set(retrieved))) / len(retrieved)
+
+
+def rank_sensitivity(retrieved: list[str], relevant: list[str], k: int) -> float | None:
+    """Measure how much retrieval quality changes when rank order is ignored."""
+    if not relevant or k <= 0:
+        return None
+    ordered = ndcg_at_k(retrieved, relevant, k)
+    if ordered is None:
+        return None
+    shuffled = sorted(retrieved[:k], key=lambda value: value)
+    unordered = ndcg_at_k(shuffled, relevant, k) or 0.0
+    return abs(ordered - unordered)

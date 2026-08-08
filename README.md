@@ -25,16 +25,18 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 | **确定性检索指标** | `recall@k` / `precision@k` / `MRR` / `hit_rate@k` — 不依赖任何 LLM，稳定可复现 |
 | **引用溯源指标** | `citation_coverage`（有上下文时是否给出引用）/ `citation_validity`（引用是否指向真实检索结果） |
 | **LLM-as-judge** | `faithfulness`（答案是否被上下文支撑 / 幻觉检测）/ `answer_relevancy`（答案是否切题），任何 OpenAI 兼容端点均可，**本地 Ollama 开箱即用** |
-| **回归门禁** | `ragproof compare` 对比 baseline 与 current，阈值不达标 exit code = 1，直接卡住 CI |
+| **回归门禁** | `ragproof compare` 支持绝对阈值、低值上限、delta、相对下降、分组、样本数、coverage 和 YAML 策略文件 |
 | **可比性保护** | run 自动记录数据集、配置和样本选择指纹；baseline 不匹配时默认阻断比较 |
 | **分组门禁** | 可按 tags / difficulty 对中文、困难题、安全题等切片单独卡阈值 |
 | **数据完整性** | 报告记录答案、上下文、引用和各指标的可用率，可用 `--require-metric` 防止 N/A 悄悄通过 |
 | **流式性能** | HTTP 流式响应边读边评测，记录首 Token 延迟、总耗时和输出字符数 |
-| **报告** | 一条命令生成 Markdown / HTML 报告 |
+| **报告** | 一条命令生成 Markdown / HTML / CSV / JUnit XML / SARIF 报告，并可嵌入 baseline/current 样本对照 |
 | **可解释性** | 失败样本排序、上下文片段、检索 ID、引用匹配、Judge 原因、复制失败 JSON |
 | **分组分析** | 按 tags / difficulty 汇总，支持中文、英文、企业、安全数据切片 |
 | **回归策略** | 绝对阈值、最小 delta、最大相对下降，支持 GitHub Actions 注释 |
 | **工程化** | `validate` / `init` / dry-run / JSON / CSV / judge cache / 多模型投票 / provenance |
+| **数据治理** | `dataset-lint` / `dataset-manifest`、近重复检测、分层抽样、CSV/JSON/XLSX/Parquet 导入、脱敏 |
+| **趋势分析** | `trend` bootstrap 置信区间、`bisect` 首个回归定位、分组热力数据 |
 | **框架无关** | 通用 HTTP adapter，通过 YAML 声明请求/响应字段映射即可接入任何 RAG API（Spring AI / LangChain / LlamaIndex / 自研均可） |
 | **优雅降级** | Judge 端点不可用时自动跳过 LLM 指标，确定性指标照常输出 |
 
@@ -42,7 +44,7 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 
 ```bash
 # 安装最新已验证发行版（GitHub Release tag）
-pip install "git+https://github.com/however-yir/ragproof.git@v0.3.1"
+pip install "git+https://github.com/however-yir/ragproof.git@v0.4.0"
 
 # 或从源码安装（开发）
 pip install -e ".[dev]"
@@ -55,6 +57,17 @@ pip install -e ".[dev]"
 ```bash
 ragproof run -c examples/mock.yaml -o runs/current.json
 ragproof report runs/current.json -o report.html
+
+# 对低值更好的指标设置上限，并复用策略文件
+ragproof compare \
+  --baseline runs/baseline.json --current runs/current.json \
+  --max "error_rate<=0.10" \
+  --max "p95_latency_ms<=1500" \
+  --policy examples/threshold-policy.yaml
+
+# 多次运行趋势、置信区间和首个回归文件
+ragproof trend runs/*.json -o trend.json
+ragproof bisect runs/*.json --metric recall@5 --threshold 0.70
 open report.html
 ```
 
@@ -215,10 +228,14 @@ required_metrics: [recall@5, citation_coverage]
 | `context_relevance` | LLM-as-judge | 检索上下文对问题的相关性 |
 | `answer_relevancy` | LLM-as-judge | 答案对问题的切题程度，0–1 |
 | `avg_latency_ms` / `error_rate` | operational | 平均延迟 / 请求错误率 |
+| `tokens_per_second` / `avg_first_token_latency_ms` | operational | 输出吞吐 / 首 Token 延迟 |
+| `claim_support` / `citation_span_overlap` | deterministic | 声明支撑度 / 引用上下文重合度 |
+| `context_redundancy` / `context_diversity` | deterministic | 检索上下文重复度 / 多样性 |
+| `unanswerable_correctness` / `judge_agreement` | safety / judge | 不可回答问题处理 / 多模型一致性 |
 
 ## Sample Report
 
-仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。报告也支持 CSV：`ragproof report runs/current.json -o report.csv`。
+仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。报告也支持 CSV、JUnit XML 和 SARIF：`ragproof report runs/current.json -o report.csv`。
 
 更多说明：[数据集规范](docs/DATASET_SCHEMA.md)、[Adapter 指南](docs/ADAPTERS.md)、[CI 教程](docs/CI_TUTORIAL.md)、[架构](docs/ARCHITECTURE.md)、[Benchmark 与适用边界](docs/BENCHMARK.md)。
 
@@ -243,7 +260,8 @@ ragproof validate -c eval/ragproof.yaml
 - [x] LLM judge 结果缓存、结构化原因、多模型投票
 - [x] `compare` 支持相对回归阈值和 delta
 - [x] LangServe / LangChain / LlamaIndex / Dify / OpenAI 兼容预设
-- [ ] 多 run 趋势报告
+- [x] 多 run 趋势报告、bootstrap 区间和本地回归定位
+- [x] 可选 embedding-backed semantic similarity、启发式中文 tokenizer 和自定义 token 统计
 
 ## Why Another Eval Tool?
 

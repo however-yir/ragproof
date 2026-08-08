@@ -7,10 +7,23 @@ import os
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Any, cast
 
 import click
 
 from . import __version__
+
+
+def _parse_key_values(specs: tuple[str, ...] | list[str]) -> dict[str, float]:
+    values: dict[str, float] = {}
+    for spec in specs:
+        if "=" not in spec:
+            raise click.ClickException(f"expected name=value, got {spec!r}")
+        name, raw = spec.split("=", 1)
+        if not name.strip():
+            raise click.ClickException(f"metric/field name is empty: {spec!r}")
+        values[name.strip()] = float(raw.strip().removesuffix("%")) / (100 if raw.strip().endswith("%") else 1)
+    return values
 
 
 @click.group()
@@ -83,12 +96,146 @@ def validate_cmd(config_path: str, as_json: bool):
         click.echo(f"✔ valid: {config_path}")
 
 
+@cli.command("dataset-manifest")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--json", "as_json", is_flag=True, help="Print machine-readable manifest output.")
+def dataset_manifest_cmd(path: str, as_json: bool):
+    """Print a stable dataset manifest for provenance and review."""
+    from .dataset import manifest
+
+    try:
+        payload = manifest(path)
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, ensure_ascii=False, indent=None if as_json else 2))
+
+
+@cli.command("dataset-lint")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--near-duplicate-threshold", type=float, default=0.9, show_default=True)
+@click.option("--json", "as_json", is_flag=True)
+def dataset_lint_cmd(path: str, near_duplicate_threshold: float, as_json: bool):
+    """Check schema, duplicate IDs/questions, and near-duplicate questions."""
+    from .dataset import load, near_duplicate_questions, validate
+
+    errors = validate(path)
+    duplicates: list[tuple[str, str, float]] = []
+    if not errors:
+        duplicates = near_duplicate_questions(load(path), threshold=near_duplicate_threshold)
+    payload = {"valid": not errors, "errors": errors, "near_duplicates": duplicates}
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False))
+    else:
+        if errors:
+            for error in errors:
+                click.echo(f"✘ {error}")
+        else:
+            click.echo(f"✔ dataset schema valid; near duplicates: {len(duplicates)}")
+        if duplicates:
+            for left, right, score in duplicates:
+                click.echo(f"  - {left} ~ {right} ({score:.3f})")
+        if errors or duplicates:
+            raise click.exceptions.Exit(1)
+
+
+@cli.command("trend")
+@click.argument("run_paths", nargs=-1, type=click.Path(exists=True))
+@click.option("-o", "output", default="trend.json", show_default=True)
+@click.option("--metric", "metrics", multiple=True, help="Only include these metrics; repeatable.")
+def trend_cmd(run_paths: tuple[str, ...], output: str, metrics: tuple[str, ...]):
+    """Summarize multiple runs with bootstrap confidence intervals."""
+    from .trend import summarize_runs
+
+    if not run_paths:
+        raise click.ClickException("provide at least one run JSON")
+    payload = summarize_runs(run_paths, metrics)
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.suffix.lower() == ".md":
+        lines = ["# ragproof trend", "", "| Metric | Count | Latest | Mean | 95% CI |", "|---|---:|---:|---:|---|"]
+        for name, item in payload["metrics"].items():
+            lines.append(f"| `{name}` | {item['count']} | {item['latest']} | {item['mean']} | {item['ci95_low']} – {item['ci95_high']} |")
+        destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    elif destination.suffix.lower() == ".html":
+        rows = "".join(
+            f"<tr><td>{name}</td><td>{item['count']}</td><td>{item['latest']}</td><td>{item['mean']}</td><td>{item['ci95_low']} – {item['ci95_high']}</td></tr>"
+            for name, item in payload["metrics"].items()
+        )
+        destination.write_text(
+            "<html><head><meta charset='utf-8'><title>ragproof trend</title></head><body>"
+            "<h1>ragproof trend</h1><table border='1'><tr><th>Metric</th><th>Count</th><th>Latest</th><th>Mean</th><th>95% CI</th></tr>"
+            + rows
+            + "</table></body></html>",
+            encoding="utf-8",
+        )
+    else:
+        destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    click.echo(f"✔ trend written to {destination}")
+
+
+@cli.command("bisect")
+@click.argument("run_paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--metric", required=True)
+@click.option("--threshold", required=True, type=float)
+@click.option("--max", "maximum", is_flag=True, help="Treat the metric as lower-is-better.")
+def bisect_cmd(run_paths: tuple[str, ...], metric: str, threshold: float, maximum: bool):
+    """Find the first run file that crosses a regression gate."""
+    from .trend import find_first_regression
+
+    result = find_first_regression(run_paths, metric, threshold, maximum=maximum)
+    click.echo(result or "no regression found")
+
+
+@cli.command("threshold-recommend")
+@click.argument("run_paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--floor", type=float, default=0.95, show_default=True)
+def threshold_recommend_cmd(run_paths: tuple[str, ...], floor: float):
+    """Recommend gates from a run history instead of a single baseline."""
+    from .trend import recommend_from_history
+
+    if not run_paths:
+        raise click.ClickException("provide at least one run JSON")
+    click.echo(json.dumps(recommend_from_history(run_paths, floor=floor), ensure_ascii=False, indent=2))
+
+
+@cli.command("judge-check")
+@click.option("-c", "config_path", required=True, type=click.Path(exists=True))
+def judge_check_cmd(config_path: str):
+    """Check judge endpoint reachability and structured-score parsing."""
+    from .config import RunConfig
+    from .metrics.judge import Judge
+
+    try:
+        config = RunConfig.load(config_path)
+        judge = Judge(config.judge)
+        result = judge.evaluate_answer_relevancy("What is RAG?", "RAG retrieves context before generation.", "Retrieval augmented generation")
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    if result is None:
+        raise click.ClickException("judge endpoint unavailable or returned an unparseable score")
+    click.echo(json.dumps({"score": result.score, "model": result.model, "votes": result.votes}, ensure_ascii=False))
+
+
+@cli.command("judge-calibrate")
+@click.option("--score", "scores", multiple=True, type=float, required=True)
+@click.option("--label", "labels", multiple=True, type=float, required=True)
+def judge_calibrate_cmd(scores: tuple[float, ...], labels: tuple[float, ...]):
+    """Measure Judge calibration against golden scores in the 0–1 range."""
+    from .metrics.judge import calibration_summary
+
+    try:
+        payload = calibration_summary(list(scores), list(labels))
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(payload, ensure_ascii=False))
+
+
 @cli.command("probe")
 @click.option("-c", "--config", "config_path", required=True, type=click.Path(exists=True))
-@click.option("--question", default="What is RAG?", show_default=True, help="One safe question to send to the configured endpoint.")
+@click.option("--question", "questions", multiple=True, help="Safe question to send; repeat for a multi-question probe.")
 @click.option("-o", "--output", type=click.Path(), help="Write the suggested adapter YAML to this path.")
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable candidate paths.")
-def probe_cmd(config_path: str, question: str, output: str | None, as_json: bool):
+def probe_cmd(config_path: str, questions: tuple[str, ...], output: str | None, as_json: bool):
     """Call an HTTP adapter once and suggest response-field mappings."""
     from .adapters import build_adapter
     from .config import RunConfig
@@ -98,7 +245,9 @@ def probe_cmd(config_path: str, question: str, output: str | None, as_json: bool
         config = RunConfig.load(config_path)
         if config.adapter.type.lower() == "mock":
             raise click.ClickException("probe requires an HTTP adapter; mock responses already have a known schema")
-        response = build_adapter(config.adapter).ask(question)
+        probe_questions = questions or ("What is RAG?",)
+        responses = [build_adapter(config.adapter).ask(question) for question in probe_questions]
+        response = responses[0]
         if response.error:
             raise click.ClickException(f"probe request failed: {response.error}")
         if not isinstance(response.raw, dict):
@@ -110,8 +259,10 @@ def probe_cmd(config_path: str, question: str, output: str | None, as_json: bool
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(starter, encoding="utf-8")
         result = {
-            "question": question,
+            "question": probe_questions[0],
+            "questions": list(probe_questions),
             "latency_ms": response.latency_ms,
+            "latencies_ms": [item.latency_ms for item in responses],
             "streamed": response.streamed,
             "mapping": {key: value for key, value in mapping.items() if key != "candidates"},
             "candidates": mapping["candidates"],
@@ -139,6 +290,10 @@ def probe_cmd(config_path: str, question: str, output: str | None, as_json: bool
 @click.option("--include-tag", multiple=True, help="Only evaluate samples carrying this tag; repeatable.")
 @click.option("--exclude-tag", multiple=True, help="Skip samples carrying this tag; repeatable.")
 @click.option("--require-metric", multiple=True, help="Require a metric for every selected sample; repeatable.")
+@click.option("--require-field", multiple=True, help="Require a response field for every selected sample; repeatable.")
+@click.option("--min-coverage", multiple=True, help="Minimum coverage gate, e.g. contexts=0.9; repeatable.")
+@click.option("--min-sample-count", type=int, help="Require at least this many selected samples.")
+@click.option("--stratify-by", type=str, help="Round-robin sample selection by tags, difficulty, answerable, or metadata.FIELD.")
 @click.option("--seed", type=int, help="Deterministically shuffle selected samples.")
 @click.option("--json", "as_json", is_flag=True, help="Print the run summary as JSON.")
 def run_cmd(
@@ -150,6 +305,10 @@ def run_cmd(
     include_tag: tuple[str, ...],
     exclude_tag: tuple[str, ...],
     require_metric: tuple[str, ...],
+    require_field: tuple[str, ...],
+    min_coverage: tuple[str, ...],
+    min_sample_count: int | None,
+    stratify_by: str | None,
     seed: int | None,
     as_json: bool,
 ):
@@ -170,12 +329,20 @@ def run_cmd(
             config.exclude_tags = list(exclude_tag)
         if require_metric:
             config.required_metrics = sorted(set(config.required_metrics).union(require_metric))
+        if require_field:
+            config.required_fields = sorted(set(config.required_fields).union(require_field))
+        if min_coverage:
+            config.min_coverage.update(_parse_key_values(min_coverage))
+        if min_sample_count is not None:
+            config.min_sample_count = min_sample_count
+        if stratify_by:
+            config.stratify_by = stratify_by
         if seed is not None:
             config.seed = seed
         errors = config.validation_errors()
         if errors:
             raise click.ClickException("configuration invalid:\n" + "\n".join(f"- {error}" for error in errors))
-        samples = load(config.dataset)
+        samples = load(config.dataset, reject_duplicates=config.deduplicate_questions)
         if dry_run:
             payload = {"config": config.summary(), "samples_available": len(samples), "top_ks": config.effective_top_ks()}
             click.echo(json.dumps(payload, ensure_ascii=False, indent=2) if as_json else f"✔ dry run: {len(samples)} samples available; top-k={config.effective_top_ks()}")
@@ -197,9 +364,15 @@ def run_cmd(
 @click.option("--baseline", required=True, type=click.Path(exists=True))
 @click.option("--current", required=True, type=click.Path(exists=True))
 @click.option("--threshold", "thresholds", multiple=True, help="Absolute gate, e.g. faithfulness=0.8.")
+@click.option("--max", "max_thresholds", multiple=True, help="Maximum gate for lower-is-better metrics, e.g. error_rate<=0.1.")
 @click.option("--min-delta", "min_deltas", multiple=True, help="Minimum current-baseline delta, e.g. recall@5=-0.05.")
 @click.option("--max-relative-drop", "relative_drops", multiple=True, help="Maximum relative drop, e.g. faithfulness=5%.")
 @click.option("--group-threshold", "group_thresholds", multiple=True, help="Group gate, e.g. tags:zh:faithfulness=0.8.")
+@click.option("--group-max", "group_max_thresholds", multiple=True, help="Maximum group gate, e.g. tags:zh:error_rate<=0.1.")
+@click.option("--policy", type=click.Path(exists=True), help="YAML/JSON threshold policy file.")
+@click.option("--min-sample-count", type=int, help="Require at least this many samples in current run.")
+@click.option("--min-coverage", multiple=True, help="Minimum current coverage, e.g. contexts=0.95.")
+@click.option("--require-field", multiple=True, help="Require a field at 100% coverage; repeatable.")
 @click.option("--allow-provenance-mismatch", is_flag=True, help="Allow runs with different dataset/config fingerprints.")
 @click.option("--recommend", is_flag=True, help="Print recommended absolute gates from the baseline.")
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable comparison output.")
@@ -207,9 +380,15 @@ def compare_cmd(
     baseline: str,
     current: str,
     thresholds: tuple[str, ...],
+    max_thresholds: tuple[str, ...],
     min_deltas: tuple[str, ...],
     relative_drops: tuple[str, ...],
     group_thresholds: tuple[str, ...],
+    group_max_thresholds: tuple[str, ...],
+    policy: str | None,
+    min_sample_count: int | None,
+    min_coverage: tuple[str, ...],
+    require_field: tuple[str, ...],
     allow_provenance_mismatch: bool,
     recommend: bool,
     as_json: bool,
@@ -217,7 +396,10 @@ def compare_cmd(
     """Compare two runs and fail (exit 1) if any gate is not met."""
     from .compare import (
         compare,
+        load_threshold_policy,
+        parse_group_max_thresholds,
         parse_group_thresholds,
+        parse_max_thresholds,
         parse_relative_drops,
         parse_thresholds,
         recommend_thresholds,
@@ -227,19 +409,41 @@ def compare_cmd(
     try:
         if recommend:
             click.echo(json.dumps(recommend_thresholds(baseline), ensure_ascii=False, indent=2))
-            if not thresholds and not min_deltas and not relative_drops:
+            from .compare import recommend_max_thresholds
+
+            click.echo(json.dumps({"max": recommend_max_thresholds(baseline)}, ensure_ascii=False, indent=2))
+            if not thresholds and not max_thresholds and not min_deltas and not relative_drops:
                 return
         parsed = parse_thresholds(list(thresholds))
+        parsed_max = parse_max_thresholds(list(max_thresholds))
         parsed_deltas = parse_thresholds(list(min_deltas))
         parsed_relative = parse_relative_drops(list(relative_drops))
         parsed_groups = parse_group_thresholds(list(group_thresholds))
+        parsed_group_max = parse_group_max_thresholds(list(group_max_thresholds))
+        values: dict[str, Any] = {}
+        if policy:
+            values = cast(dict[str, Any], load_threshold_policy(policy))
+            parsed.update({str(key): float(value) for key, value in (values.get("thresholds") or {}).items()})
+            parsed_max.update({str(key): float(value) for key, value in (values.get("max_thresholds") or {}).items()})
+            parsed_deltas.update({str(key): float(value) for key, value in (values.get("min_deltas") or {}).items()})
+            parsed_relative.update({str(key): float(value) for key, value in (values.get("max_relative_drops") or {}).items()})
+        raw_min_sample_count = values.get("min_sample_count") if policy else None
+        policy_min_sample_count = int(cast(str | int, raw_min_sample_count)) if raw_min_sample_count is not None else min_sample_count
+        policy_min_coverage = {str(key): float(value) for key, value in ((values.get("min_coverage") or {}) if policy else {}).items()}
+        policy_min_coverage.update(_parse_key_values(min_coverage))
+        policy_required_fields = list((values.get("required_fields") or []) if policy else []) + list(require_field)
         results, all_passed = compare(
             baseline,
             current,
             parsed,
             min_deltas=parsed_deltas,
             max_relative_drops=parsed_relative,
+            max_thresholds=parsed_max,
             group_thresholds=parsed_groups,
+            group_max_thresholds=parsed_group_max,
+            min_sample_count=policy_min_sample_count,
+            min_coverage=policy_min_coverage,
+            required_fields=policy_required_fields,
             allow_provenance_mismatch=allow_provenance_mismatch,
         )
     except Exception as exc:
@@ -265,7 +469,10 @@ def compare_cmd(
 @click.option("--threshold", "thresholds", multiple=True)
 @click.option("--min-delta", "max_deltas", multiple=True)
 @click.option("--max-relative-drop", "relative_drops", multiple=True)
+@click.option("--max", "max_thresholds", multiple=True)
 @click.option("--group-threshold", "group_thresholds", multiple=True)
+@click.option("--group-max", "group_max_thresholds", multiple=True)
+@click.option("--policy", type=click.Path(exists=True))
 @click.option("--allow-provenance-mismatch", is_flag=True)
 @click.option("--worst", type=int, help="Show only the N most severe samples in the report.")
 @click.option("--open", "open_report", is_flag=True, help="Open the generated report in the default browser.")
@@ -276,7 +483,10 @@ def report_cmd(
     thresholds: tuple[str, ...],
     max_deltas: tuple[str, ...],
     relative_drops: tuple[str, ...],
+    max_thresholds: tuple[str, ...],
     group_thresholds: tuple[str, ...],
+    group_max_thresholds: tuple[str, ...],
+    policy: str | None,
     allow_provenance_mismatch: bool,
     worst: int | None,
     open_report: bool,
@@ -292,7 +502,10 @@ def report_cmd(
             thresholds=thresholds,
             max_deltas=max_deltas,
             max_relative_drops=relative_drops,
+            max_thresholds=max_thresholds,
             group_thresholds=group_thresholds,
+            group_max_thresholds=group_max_thresholds,
+            policy=policy,
             allow_provenance_mismatch=allow_provenance_mismatch,
             worst=worst,
         )
