@@ -8,6 +8,27 @@
 | samples | {{ run.sample_count }} / {{ run.dataset_sample_count | default(run.sample_count) }} |
 | duration | {{ '%.0f'|format(run.duration_ms|default(0)) }} ms |
 
+{% if run.provenance %}## Reproducibility
+
+| Fingerprint | Value |
+|---|---|
+{% for name, value in run.provenance.items() -%}
+| `{{ name }}` | `{{ value }}` |
+{% endfor %}
+{% endif %}
+
+{% if run.coverage %}## Data Coverage
+
+| Field / Metric | Available | Total | Rate |
+|---|---:|---:|---:|
+{% for name, item in run.coverage.fields.items() -%}
+| `{{ name }}` | {{ item.available }} | {{ item.total }} | {{ '%.1f%%'|format(item.rate * 100) }} |
+{% endfor %}
+{% for name, item in run.coverage.metrics.items() -%}
+| `{{ name }}` | {{ item.available }} | {{ item.total }} | {{ '%.1f%%'|format(item.rate * 100) }} |
+{% endfor %}
+{% endif %}
+
 ## Aggregate Metrics
 
 | Metric | Value |

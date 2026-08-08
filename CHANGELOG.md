@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — 2026-08-08
+
+- Added dataset/config/sample-selection fingerprints and provenance-safe baseline comparison.
+- Added per-tag and per-difficulty absolute regression gates.
+- Added field/metric coverage reporting and `--require-metric` completeness gates.
+- Added true streaming HTTP consumption with first-token latency and output character metrics.
+- Added explicit citation object ID/text mapping for structured API responses.
+- Added a 75% CI coverage floor and reproducibility details to generated reports.
+
 ## 0.2.0 — 2026-08-07
 
 - Added validated datasets with tags, difficulty, multiple references, expected citations, and duplicate detection.

@@ -6,6 +6,8 @@ runs/
 report.html
 report.md
 .pytest_cache/
+.coverage
+coverage.xml
 .ragproof/
 .env
 *.csv

@@ -89,3 +89,24 @@ def test_report_html_and_md(tmp_path):
     assert runner.invoke(cli, ["report", str(out), "-o", str(md)]).exit_code == 0
     assert "<html" in html.read_text(encoding="utf-8")
     assert "Aggregate Metrics" in md.read_text(encoding="utf-8")
+
+
+def test_run_records_provenance_and_coverage(tmp_path):
+    config = _setup(tmp_path)
+    out = tmp_path / "run.json"
+    result = CliRunner().invoke(cli, ["run", "-c", str(config), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert len(data["provenance"]["dataset_sha256"]) == 64
+    assert data["coverage"]["fields"]["answers"]["rate"] == 1.0
+    assert data["coverage"]["metrics"]["recall@3"]["rate"] == 1.0
+
+
+def test_required_metric_fails_with_report(tmp_path):
+    config = _setup(tmp_path)
+    config.write_text(config.read_text(encoding="utf-8") + "required_metrics: [faithfulness]\n", encoding="utf-8")
+    out = tmp_path / "run.json"
+    result = CliRunner().invoke(cli, ["run", "-c", str(config), "-o", str(out)])
+    assert result.exit_code == 1
+    assert out.exists()
+    assert "faithfulness" in result.output

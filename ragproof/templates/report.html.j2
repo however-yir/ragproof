@@ -26,6 +26,15 @@
   <div class="meta">ragproof {{ run.ragproof_version | default('unknown') }} · {{ run.timestamp }} · {{ run.sample_count }} selected / {{ run.dataset_sample_count | default(run.sample_count) }} samples · {{ '%.0f'|format(run.duration_ms|default(0)) }} ms</div>
   {% if run.git_sha %}<div class="meta">git: <code>{{ run.git_sha }}</code></div>{% endif %}
 
+  {% if run.coverage %}
+  <details><summary>Data coverage</summary>
+    <table><thead><tr><th>Field / metric</th><th>Available</th><th>Total</th><th>Rate</th></tr></thead><tbody>
+    {% for name, item in run.coverage.fields.items() %}<tr><td><code>{{ name }}</code></td><td>{{ item.available }}</td><td>{{ item.total }}</td><td>{{ '%.1f'|format(item.rate * 100) }}%</td></tr>{% endfor %}
+    {% for name, item in run.coverage.metrics.items() %}<tr><td><code>{{ name }}</code></td><td>{{ item.available }}</td><td>{{ item.total }}</td><td>{{ '%.1f'|format(item.rate * 100) }}%</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
+  {% endif %}
+
   <section class="cards">
     {% for name, value in run.aggregate.items() %}
     <div class="card"><div class="metric">{{ name }}</div><div class="value">{{ '%.3f'|format(value) if value is number else value }}</div></div>

@@ -1,0 +1,104 @@
+name: ragproof evaluation
+description: Run a RAG evaluation, render its report, and enforce regression gates.
+inputs:
+  config:
+    description: Path to the ragproof YAML configuration.
+    required: true
+  baseline:
+    description: Path to the known-good baseline JSON.
+    required: false
+  output:
+    description: Path for the current run JSON.
+    required: false
+    default: runs/current.json
+  thresholds:
+    description: Newline-separated absolute thresholds such as faithfulness=0.75.
+    required: false
+  group-thresholds:
+    description: Newline-separated group thresholds such as tags:zh:faithfulness=0.75.
+    required: false
+  required-metrics:
+    description: Newline-separated metrics that must be available for every selected sample.
+    required: false
+  python-version:
+    description: Python version used to run ragproof.
+    required: false
+    default: '3.11'
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install ragproof
+      shell: bash
+      env:
+        RAGPROOF_ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+        ref="${RAGPROOF_ACTION_REF:-main}"
+        python -m pip install --disable-pip-version-check "git+https://github.com/however-yir/ragproof.git@${ref}"
+
+    - name: Run evaluation
+      shell: bash
+      env:
+        RAGPROOF_CONFIG: ${{ inputs.config }}
+        RAGPROOF_OUTPUT: ${{ inputs.output }}
+        RAGPROOF_REQUIRED_METRICS: ${{ inputs['required-metrics'] }}
+      run: |
+        set -euo pipefail
+        required_args=()
+        while IFS= read -r metric; do
+          [[ -n "$metric" ]] && required_args+=(--require-metric "$metric")
+        done <<< "$RAGPROOF_REQUIRED_METRICS"
+        ragproof run -c "$RAGPROOF_CONFIG" -o "$RAGPROOF_OUTPUT" "${required_args[@]}"
+
+    - name: Compare against baseline
+      if: ${{ inputs.baseline != '' }}
+      shell: bash
+      env:
+        RAGPROOF_BASELINE: ${{ inputs.baseline }}
+        RAGPROOF_CURRENT: ${{ inputs.output }}
+        RAGPROOF_THRESHOLDS: ${{ inputs.thresholds }}
+        RAGPROOF_GROUP_THRESHOLDS: ${{ inputs['group-thresholds'] }}
+      run: |
+        set -euo pipefail
+        threshold_args=()
+        while IFS= read -r threshold; do
+          [[ -n "$threshold" ]] && threshold_args+=(--threshold "$threshold")
+        done <<< "$RAGPROOF_THRESHOLDS"
+        group_args=()
+        while IFS= read -r threshold; do
+          [[ -n "$threshold" ]] && group_args+=(--group-threshold "$threshold")
+        done <<< "$RAGPROOF_GROUP_THRESHOLDS"
+        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}"
+
+    - name: Render report and summary
+      if: ${{ always() }}
+      shell: bash
+      env:
+        RAGPROOF_OUTPUT: ${{ inputs.output }}
+      run: |
+        set -euo pipefail
+        if [[ -f "$RAGPROOF_OUTPUT" ]]; then
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.html"
+          python - "$RAGPROOF_OUTPUT" <<'PY'
+        import json
+        import os
+        import sys
+
+        report = json.load(open(sys.argv[1], encoding="utf-8"))
+        print(f"### ragproof\n\n- Samples: {report.get('sample_count', 0)}\n- Error rate: {report.get('aggregate', {}).get('error_rate', 0):.3f}", file=open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8"))
+        PY
+        fi
+
+    - name: Upload evaluation artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ragproof-evaluation
+        path: |
+          ${{ inputs.output }}
+          ${{ inputs.output }}.html

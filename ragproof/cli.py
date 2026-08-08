@@ -91,6 +91,7 @@ def validate_cmd(config_path: str, as_json: bool):
 @click.option("--sample-limit", type=int, help="Evaluate only the first N selected samples.")
 @click.option("--include-tag", multiple=True, help="Only evaluate samples carrying this tag; repeatable.")
 @click.option("--exclude-tag", multiple=True, help="Skip samples carrying this tag; repeatable.")
+@click.option("--require-metric", multiple=True, help="Require a metric for every selected sample; repeatable.")
 @click.option("--seed", type=int, help="Deterministically shuffle selected samples.")
 @click.option("--json", "as_json", is_flag=True, help="Print the run summary as JSON.")
 def run_cmd(
@@ -101,6 +102,7 @@ def run_cmd(
     sample_limit: int | None,
     include_tag: tuple[str, ...],
     exclude_tag: tuple[str, ...],
+    require_metric: tuple[str, ...],
     seed: int | None,
     as_json: bool,
 ):
@@ -119,6 +121,8 @@ def run_cmd(
             config.include_tags = list(include_tag)
         if exclude_tag:
             config.exclude_tags = list(exclude_tag)
+        if require_metric:
+            config.required_metrics = sorted(set(config.required_metrics).union(require_metric))
         if seed is not None:
             config.seed = seed
         errors = config.validation_errors()
@@ -148,6 +152,8 @@ def run_cmd(
 @click.option("--threshold", "thresholds", multiple=True, help="Absolute gate, e.g. faithfulness=0.8.")
 @click.option("--min-delta", "min_deltas", multiple=True, help="Minimum current-baseline delta, e.g. recall@5=-0.05.")
 @click.option("--max-relative-drop", "relative_drops", multiple=True, help="Maximum relative drop, e.g. faithfulness=5%.")
+@click.option("--group-threshold", "group_thresholds", multiple=True, help="Group gate, e.g. tags:zh:faithfulness=0.8.")
+@click.option("--allow-provenance-mismatch", is_flag=True, help="Allow runs with different dataset/config fingerprints.")
 @click.option("--recommend", is_flag=True, help="Print recommended absolute gates from the baseline.")
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable comparison output.")
 def compare_cmd(
@@ -156,11 +162,20 @@ def compare_cmd(
     thresholds: tuple[str, ...],
     min_deltas: tuple[str, ...],
     relative_drops: tuple[str, ...],
+    group_thresholds: tuple[str, ...],
+    allow_provenance_mismatch: bool,
     recommend: bool,
     as_json: bool,
 ):
     """Compare two runs and fail (exit 1) if any gate is not met."""
-    from .compare import compare, parse_relative_drops, parse_thresholds, recommend_thresholds, results_as_dicts
+    from .compare import (
+        compare,
+        parse_group_thresholds,
+        parse_relative_drops,
+        parse_thresholds,
+        recommend_thresholds,
+        results_as_dicts,
+    )
 
     try:
         if recommend:
@@ -170,8 +185,15 @@ def compare_cmd(
         parsed = parse_thresholds(list(thresholds))
         parsed_deltas = parse_thresholds(list(min_deltas))
         parsed_relative = parse_relative_drops(list(relative_drops))
+        parsed_groups = parse_group_thresholds(list(group_thresholds))
         results, all_passed = compare(
-            baseline, current, parsed, min_deltas=parsed_deltas, max_relative_drops=parsed_relative
+            baseline,
+            current,
+            parsed,
+            min_deltas=parsed_deltas,
+            max_relative_drops=parsed_relative,
+            group_thresholds=parsed_groups,
+            allow_provenance_mismatch=allow_provenance_mismatch,
         )
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
@@ -196,6 +218,8 @@ def compare_cmd(
 @click.option("--threshold", "thresholds", multiple=True)
 @click.option("--min-delta", "max_deltas", multiple=True)
 @click.option("--max-relative-drop", "relative_drops", multiple=True)
+@click.option("--group-threshold", "group_thresholds", multiple=True)
+@click.option("--allow-provenance-mismatch", is_flag=True)
 @click.option("--worst", type=int, help="Show only the N most severe samples in the report.")
 @click.option("--open", "open_report", is_flag=True, help="Open the generated report in the default browser.")
 def report_cmd(
@@ -205,6 +229,8 @@ def report_cmd(
     thresholds: tuple[str, ...],
     max_deltas: tuple[str, ...],
     relative_drops: tuple[str, ...],
+    group_thresholds: tuple[str, ...],
+    allow_provenance_mismatch: bool,
     worst: int | None,
     open_report: bool,
 ):
@@ -219,6 +245,8 @@ def report_cmd(
             thresholds=thresholds,
             max_deltas=max_deltas,
             max_relative_drops=relative_drops,
+            group_thresholds=group_thresholds,
+            allow_provenance_mismatch=allow_provenance_mismatch,
             worst=worst,
         )
     except Exception as exc:

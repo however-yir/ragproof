@@ -4,7 +4,19 @@ from ragproof.compare import compare, parse_relative_drops
 
 
 def _write(path, aggregate):
-    path.write_text(json.dumps({"aggregate": aggregate}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "aggregate": aggregate,
+                "provenance": {
+                    "dataset_sha256": "dataset",
+                    "config_sha256": "config",
+                    "selected_sample_ids_sha256": "samples",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_relative_drop_and_delta_gates(tmp_path):

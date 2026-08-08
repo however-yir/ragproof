@@ -49,6 +49,8 @@ class AdapterConfig(BaseModel):
     contexts_path: str | None = None
     context_id_path: str | None = None
     citations_path: str | None = None
+    citation_id_path: str | None = None
+    citation_text_path: str | None = None
 
     @field_validator("method")
     @classmethod
@@ -143,6 +145,7 @@ class RunConfig(BaseModel):
     exclude_tags: list[str] = Field(default_factory=list)
     seed: int | None = None
     group_by: list[str] = Field(default_factory=lambda: ["tags", "difficulty"])
+    required_metrics: list[str] = Field(default_factory=list)
     # These values are copied into run metadata when supplied by CI or a caller.
     git_sha: str | None = None
     config_path: str | None = Field(default=None, exclude=True)
@@ -212,6 +215,7 @@ class RunConfig(BaseModel):
             "include_tags": self.include_tags,
             "exclude_tags": self.exclude_tags,
             "seed": self.seed,
+            "required_metrics": sorted(set(self.required_metrics)),
         }
 
     def validation_errors(self) -> list[str]:

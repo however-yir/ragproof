@@ -9,7 +9,7 @@ from typing import Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
-from .compare import compare, parse_relative_drops, parse_thresholds, results_as_dicts
+from .compare import compare, parse_group_thresholds, parse_relative_drops, parse_thresholds, results_as_dicts
 
 _TEMPLATES = Path(__file__).parent / "templates"
 
@@ -51,6 +51,8 @@ def render(
     thresholds: Iterable[str] = (),
     max_deltas: Iterable[str] = (),
     max_relative_drops: Iterable[str] = (),
+    group_thresholds: Iterable[str] = (),
+    allow_provenance_mismatch: bool = False,
     worst: int | None = None,
 ) -> Path:
     """Render a report; format is inferred from the output extension."""
@@ -64,7 +66,16 @@ def render(
         absolute = parse_thresholds(list(thresholds))
         deltas = parse_thresholds(list(max_deltas)) if max_deltas else {}
         relative = parse_relative_drops(list(max_relative_drops)) if max_relative_drops else {}
-        results, passed = compare(baseline, run_path, absolute, min_deltas=deltas, max_relative_drops=relative)
+        groups = parse_group_thresholds(list(group_thresholds)) if group_thresholds else {}
+        results, passed = compare(
+            baseline,
+            run_path,
+            absolute,
+            min_deltas=deltas,
+            max_relative_drops=relative,
+            group_thresholds=groups,
+            allow_provenance_mismatch=allow_provenance_mismatch,
+        )
         run["comparison"] = {"passed": passed, "results": results_as_dicts(results)}
     out.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "csv":

@@ -14,6 +14,9 @@ class RAGResponse(BaseModel):
     context_ids: list[str] = Field(default_factory=list)
     citations: list[str] = Field(default_factory=list)
     latency_ms: float = 0.0
+    first_token_latency_ms: float | None = None
+    output_char_count: int | None = None
+    streamed: bool = False
     error: str | None = None
     error_type: str | None = None
     raw: dict | None = None

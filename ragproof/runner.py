@@ -36,6 +36,7 @@ from .metrics import (
     semantic_similarity,
 )
 from .metrics.judge import Judge, JudgeResult
+from .provenance import sha256_file, sha256_json, sha256_values
 
 
 def _git_sha() -> str | None:
@@ -117,6 +118,9 @@ def _evaluate_sample(sample: ds.Sample, adapter, judge: Judge | None, top_ks: li
         "difficulty": sample.difficulty,
         "answerable": sample.answerable,
         "latency_ms": response.latency_ms,
+        "first_token_latency_ms": response.first_token_latency_ms,
+        "output_char_count": response.output_char_count,
+        "streamed": response.streamed,
         "error": response.error,
         "error_type": response.error_type,
         "metrics": metrics,
@@ -145,8 +149,43 @@ def _aggregate(results: list[dict[str, Any]]) -> dict[str, float]:
         aggregate["avg_latency_ms"] = sum(latencies) / len(latencies)
         aggregate["p50_latency_ms"] = _percentile(latencies, 50) or 0.0
         aggregate["p95_latency_ms"] = _percentile(latencies, 95) or 0.0
+    first_token_latencies = [
+        float(r["first_token_latency_ms"])
+        for r in results
+        if r.get("first_token_latency_ms") is not None and r["error"] is None
+    ]
+    if first_token_latencies:
+        aggregate["avg_first_token_latency_ms"] = sum(first_token_latencies) / len(first_token_latencies)
+        aggregate["p95_first_token_latency_ms"] = _percentile(first_token_latencies, 95) or 0.0
+    successful = [r for r in results if r["error"] is None]
+    if successful:
+        aggregate["stream_rate"] = sum(1 for r in successful if r.get("streamed")) / len(successful)
     aggregate["error_rate"] = sum(1 for r in results if r["error"]) / len(results) if results else 0.0
     return aggregate
+
+
+def _coverage(results: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(results)
+
+    def field_rate(predicate) -> dict[str, float | int]:
+        available = sum(1 for result in results if predicate(result))
+        return {"available": available, "total": total, "rate": available / total if total else 0.0}
+
+    metric_names = sorted({name for result in results for name in result.get("metrics", {})})
+    metric_coverage = {
+        name: field_rate(lambda result, metric=name: result.get("metrics", {}).get(metric) is not None)
+        for name in metric_names
+    }
+    return {
+        "fields": {
+            "successful_requests": field_rate(lambda result: result.get("error") is None),
+            "answers": field_rate(lambda result: bool(str(result.get("answer", "")).strip())),
+            "contexts": field_rate(lambda result: bool(result.get("contexts"))),
+            "context_ids": field_rate(lambda result: bool(result.get("context_ids"))),
+            "citations": field_rate(lambda result: bool(result.get("citations"))),
+        },
+        "metrics": metric_coverage,
+    }
 
 
 def _group_aggregates(results: list[dict[str, Any]]) -> dict[str, dict[str, dict[str, float]]]:
@@ -174,6 +213,8 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
     if config.seed is not None:
         samples = list(samples)
         random.Random(config.seed).shuffle(samples)
+    if not samples:
+        raise ValueError("no samples selected; check dataset filters and sample_limit")
     adapter = build_adapter(config.adapter, retries=config.retries, retry_backoff=config.retry_backoff)
     judge = Judge(config.judge) if config.judge.enabled else None
     top_ks = config.effective_top_ks()
@@ -187,6 +228,7 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         for detail in result.get("judge", {}).values()
         if detail
     )
+    coverage = _coverage(results)
     report = {
         "name": config.name,
         "ragproof_version": __version__,
@@ -196,14 +238,33 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         "dataset": str(config.dataset),
         "dataset_sample_count": ds.samples_count(config.dataset),
         "sample_count": len(samples),
+        "provenance": {
+            "schema_version": 1,
+            "dataset_sha256": sha256_file(config.dataset),
+            "config_sha256": sha256_json(config.summary()),
+            "selected_sample_ids_sha256": sha256_values(sample.id for sample in samples),
+        },
         "top_ks": top_ks,
         "config_summary": config.summary(),
         "aggregate": _aggregate(results),
         "groups": _group_aggregates(results),
+        "coverage": coverage,
         "cost": {"estimated_total": total_cost},
         "results": results,
     }
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    required = sorted(set(config.required_metrics))
+    missing = [
+        metric
+        for metric in required
+        if coverage["metrics"].get(metric, {}).get("rate", 0.0) < 1.0
+    ]
+    if missing:
+        raise ValueError(
+            "required metrics are unavailable for every selected sample: "
+            + ", ".join(missing)
+            + f"; inspect coverage in {out}"
+        )
     return report

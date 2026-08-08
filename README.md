@@ -24,11 +24,15 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 | **引用溯源指标** | `citation_coverage`（有上下文时是否给出引用）/ `citation_validity`（引用是否指向真实检索结果） |
 | **LLM-as-judge** | `faithfulness`（答案是否被上下文支撑 / 幻觉检测）/ `answer_relevancy`（答案是否切题），任何 OpenAI 兼容端点均可，**本地 Ollama 开箱即用** |
 | **回归门禁** | `ragproof compare` 对比 baseline 与 current，阈值不达标 exit code = 1，直接卡住 CI |
+| **可比性保护** | run 自动记录数据集、配置和样本选择指纹；baseline 不匹配时默认阻断比较 |
+| **分组门禁** | 可按 tags / difficulty 对中文、困难题、安全题等切片单独卡阈值 |
+| **数据完整性** | 报告记录答案、上下文、引用和各指标的可用率，可用 `--require-metric` 防止 N/A 悄悄通过 |
+| **流式性能** | HTTP 流式响应边读边评测，记录首 Token 延迟、总耗时和输出字符数 |
 | **报告** | 一条命令生成 Markdown / HTML 报告 |
 | **可解释性** | 失败样本排序、上下文片段、检索 ID、引用匹配、Judge 原因、复制失败 JSON |
 | **分组分析** | 按 tags / difficulty 汇总，支持中文、英文、企业、安全数据切片 |
 | **回归策略** | 绝对阈值、最小 delta、最大相对下降，支持 GitHub Actions 注释 |
-| **工程化** | `validate` / `init` / dry-run / JSON / CSV / judge cache / 多模型投票 |
+| **工程化** | `validate` / `init` / dry-run / JSON / CSV / judge cache / 多模型投票 / provenance |
 | **框架无关** | 通用 HTTP adapter，通过 YAML 声明请求/响应字段映射即可接入任何 RAG API（Spring AI / LangChain / LlamaIndex / 自研均可） |
 | **优雅降级** | Judge 端点不可用时自动跳过 LLM 指标，确定性指标照常输出 |
 
@@ -59,6 +63,19 @@ ragproof compare \
   --current  runs/current.json \
   --threshold "recall@5=0.70" \
   --threshold "faithfulness=0.75"
+
+# 对中文切片单独卡门禁
+ragproof compare \
+  --baseline runs/baseline.json \
+  --current runs/current.json \
+  --group-threshold "tags:zh:faithfulness=0.75" \
+  --group-threshold "difficulty:hard:recall@5=0.70"
+
+# 要求关键指标对每个选中样本都可用
+ragproof run -c examples/knowledgeops.yaml \
+  --require-metric citation_coverage \
+  --require-metric recall@5 \
+  -o runs/current.json
 
 # 同时限制相对回归和绝对变化
 ragproof compare \
@@ -120,6 +137,7 @@ adapter:
   contexts_path: data.contexts              # 检索上下文列表
   context_id_path: docId                    # 每个上下文条目的 id 字段
   citations_path: data.citations            # 引用列表
+  citation_id_path: document.id             # 引用对象的文档 ID（可选）
   bearer_token_env: KNOWLEDGEOPS_API_KEY    # 自动生成 Authorization: Bearer ...
 
 judge:
@@ -136,6 +154,7 @@ include_tags: [enterprise]
 exclude_tags: [draft]
 sample_limit: 100
 seed: 42
+required_metrics: [recall@5, citation_coverage]
 ```
 
 完整示例：[examples/knowledgeops.yaml](examples/knowledgeops.yaml)（对接 [knowledgeops-agent](https://github.com/however-yir/knowledgeops-agent)）、[examples/mock.yaml](examples/mock.yaml)（离线演示）。

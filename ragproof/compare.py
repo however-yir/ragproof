@@ -54,6 +54,21 @@ def parse_relative_drops(specs: Iterable[str]) -> dict[str, float]:
     return out
 
 
+def parse_group_thresholds(specs: Iterable[str]) -> dict[tuple[str, str, str], float]:
+    """Parse ``dimension:value:metric=0.8`` group gates."""
+    out: dict[tuple[str, str, str], float] = {}
+    for spec in specs:
+        if "=" not in spec:
+            raise ValueError(f"invalid group threshold spec: {spec!r}")
+        selector, raw_value = spec.split("=", 1)
+        parts = selector.split(":", 2)
+        if len(parts) != 3 or not all(part.strip() for part in parts):
+            raise ValueError("group threshold must be dimension:value:metric=number")
+        dimension, group, metric = (part.strip() for part in parts)
+        out[(dimension, group, metric)] = float(raw_value.strip())
+    return out
+
+
 def _one_absolute(metric: str, threshold: float, baseline: dict[str, float], current: dict[str, float]) -> ThresholdResult:
     cur_val = current.get(metric)
     base_val = baseline.get(metric)
@@ -64,6 +79,51 @@ def _one_absolute(metric: str, threshold: float, baseline: dict[str, float], cur
     return ThresholdResult(metric, threshold, cur_val, base_val, passed, reason, actual=cur_val)
 
 
+def _one_group_absolute(
+    dimension: str,
+    group: str,
+    metric: str,
+    threshold: float,
+    baseline: dict,
+    current: dict,
+) -> ThresholdResult:
+    label = f"{dimension}:{group}:{metric}"
+    base_aggregate = baseline.get(dimension, {}).get(group, {})
+    current_aggregate = current.get(dimension, {}).get(group, {})
+    cur_val = current_aggregate.get(metric)
+    base_val = base_aggregate.get(metric)
+    if cur_val is None:
+        return ThresholdResult(label, threshold, cur_val, base_val, False, f"group metric '{label}' missing from current run", "group")
+    passed = cur_val >= threshold
+    reason = f"{cur_val:.3f} >= threshold {threshold:.3f}" if passed else f"{cur_val:.3f} < threshold {threshold:.3f}"
+    return ThresholdResult(label, threshold, cur_val, base_val, passed, reason, "group", cur_val)
+
+
+def _provenance_result(baseline: dict, current: dict, allow_mismatch: bool) -> ThresholdResult:
+    baseline_provenance = baseline.get("provenance") or {}
+    current_provenance = current.get("provenance") or {}
+    keys = ("dataset_sha256", "config_sha256", "selected_sample_ids_sha256")
+    mismatches = [
+        key
+        for key in keys
+        if not baseline_provenance.get(key) or not current_provenance.get(key)
+        or baseline_provenance.get(key) != current_provenance.get(key)
+    ]
+    if not mismatches:
+        return ThresholdResult("provenance", 0.0, 1.0, 1.0, True, "baseline and current run provenance match", "provenance", 1.0)
+    status = "allowed" if allow_mismatch else "blocked"
+    return ThresholdResult(
+        "provenance",
+        0.0,
+        1.0 if allow_mismatch else 0.0,
+        1.0,
+        allow_mismatch,
+        f"{status} provenance mismatch: {', '.join(mismatches)}",
+        "provenance",
+        1.0 if allow_mismatch else 0.0,
+    )
+
+
 def compare(
     baseline_path: str | Path,
     current_path: str | Path,
@@ -71,6 +131,8 @@ def compare(
     *,
     min_deltas: dict[str, float] | None = None,
     max_relative_drops: dict[str, float] | None = None,
+    group_thresholds: dict[tuple[str, str, str], float] | None = None,
+    allow_provenance_mismatch: bool = False,
 ) -> tuple[list[ThresholdResult], bool]:
     """Return results for absolute, minimum-delta, and relative-drop gates."""
     baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
@@ -109,6 +171,11 @@ def compare(
             passed = drop <= max_drop
             reason = f"relative drop {drop:.1%} {'<=' if passed else '>'} allowed {max_drop:.1%}"
         results.append(ThresholdResult(metric, max_drop, cur_val, base_val, passed, reason, "relative_drop", drop))
+    for (dimension, group, metric), threshold in (group_thresholds or {}).items():
+        results.append(
+            _one_group_absolute(dimension, group, metric, threshold, baseline.get("groups", {}), current.get("groups", {}))
+        )
+    results.append(_provenance_result(baseline, current, allow_provenance_mismatch))
     return results, all(result.passed for result in results)
 
 

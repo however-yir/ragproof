@@ -105,23 +105,71 @@ class HTTPAdapter:
                     answer_parts.append(str(token))
         return "".join(answer_parts), last_payload
 
+    @staticmethod
+    def _stream_token(payload: Any) -> str:
+        if not isinstance(payload, dict):
+            return ""
+        token = _dig(payload, "choices.0.delta.content") or _dig(payload, "choices.0.message.content")
+        return "" if token is None else str(token)
+
+    def _consume_stream(
+        self, response: httpx.Response, started: float
+    ) -> tuple[str, dict[str, Any] | None, float | None, int]:
+        """Consume an SSE/OpenAI-compatible response without buffering it first."""
+        answer_parts: list[str] = []
+        last_payload: dict[str, Any] | None = None
+        first_token_latency: float | None = None
+        output_chars = 0
+        for raw_line in response.iter_lines():
+            line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else raw_line
+            line = line.strip()
+            if not line or line.startswith(":") or line.startswith("event:"):
+                continue
+            if line.startswith("data:event:"):
+                continue
+            if line.startswith("data:data:"):
+                line = line[len("data:data:"):].strip()
+            elif line.startswith("data:"):
+                line = line[5:].strip()
+            if not line or line == "[DONE]":
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                token = line
+                payload = None
+            else:
+                token = self._stream_token(payload)
+                if isinstance(payload, dict):
+                    last_payload = payload
+            if not token:
+                continue
+            if first_token_latency is None:
+                first_token_latency = (time.perf_counter() - started) * 1000
+            answer_parts.append(token)
+            output_chars += len(token)
+        return "".join(answer_parts), last_payload, first_token_latency, output_chars
+
     def _one_request(self, question: str) -> RAGResponse:
         cfg = self.config
         params, json_body = self._request_payload(question)
         start = time.perf_counter()
+        first_token_latency: float | None = None
+        output_chars: int | None = None
+        answer = ""
+        data: dict[str, Any] | None = None
         try:
-            response = self.client.request(cfg.method, cfg.endpoint, params=params or None, json=json_body)
-            latency = (time.perf_counter() - start) * 1000
-            response.raise_for_status()
             if cfg.stream:
-                answer, data = self._stream_payload(response.text)
+                with self.client.stream(cfg.method, cfg.endpoint, params=params or None, json=json_body) as response:
+                    response.raise_for_status()
+                    answer, data, first_token_latency, output_chars = self._consume_stream(response, start)
             else:
+                response = self.client.request(cfg.method, cfg.endpoint, params=params or None, json=json_body)
+                response.raise_for_status()
                 try:
                     data = response.json()
-                    answer = ""
                 except ValueError:
-                    return RAGResponse(question=question, answer=response.text, latency_ms=latency)
-            data = data or {}
+                    answer = response.text
         except httpx.TimeoutException as exc:
             latency = (time.perf_counter() - start) * 1000
             return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="timeout")
@@ -135,6 +183,7 @@ class HTTPAdapter:
             latency = (time.perf_counter() - start) * 1000
             return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="response_parse")
 
+        data = data or {}
         mapped_answer = _dig(data, cfg.answer_path) if not answer else answer
         raw_contexts = _as_list(_dig(data, cfg.contexts_path))
         contexts: list[str] = []
@@ -151,9 +200,19 @@ class HTTPAdapter:
             else:
                 contexts.append(str(item))
         raw_citations = _as_list(_dig(data, cfg.citations_path))
-        citations = [str(c) for c in raw_citations]
+        citations: list[str] = []
+        for citation in raw_citations:
+            if isinstance(citation, dict):
+                citation_id = _dig(citation, cfg.citation_id_path) if cfg.citation_id_path else None
+                citation_text = _dig(citation, cfg.citation_text_path) if cfg.citation_text_path else None
+                if citation_id is None:
+                    citation_id = citation.get("id") or citation.get("document_id") or citation.get("doc_id")
+                citations.append(str(citation_id if citation_id is not None else citation_text or citation))
+            else:
+                citations.append(str(citation))
         if isinstance(mapped_answer, list):
             mapped_answer = "".join(str(part) for part in mapped_answer)
+        latency = (time.perf_counter() - start) * 1000
         return RAGResponse(
             question=question,
             answer=str(mapped_answer) if mapped_answer is not None else "",
@@ -161,6 +220,9 @@ class HTTPAdapter:
             context_ids=context_ids,
             citations=citations,
             latency_ms=latency,
+            first_token_latency_ms=first_token_latency,
+            output_char_count=output_chars,
+            streamed=cfg.stream,
             raw=data if isinstance(data, dict) else None,
         )
 

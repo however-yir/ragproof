@@ -1,6 +1,6 @@
 # Adapter guide
 
-The generic HTTP adapter supports query parameters, JSON fields, nested request templates, Bearer authentication, wildcard response paths, retries, and streamed OpenAI-style chunks.
+The generic HTTP adapter supports query parameters, JSON fields, nested request templates, Bearer authentication, wildcard response paths, retries, and streamed OpenAI-style chunks. Streaming requests are consumed incrementally and report first-token latency.
 
 Built-in presets:
 
@@ -19,3 +19,13 @@ my_rag = "my_package:build_adapter"
 ```
 
 See `examples/` for LangServe, Dify, OpenAI-compatible, and the local mock server configurations.
+
+Structured citations can be mapped explicitly when the response returns objects instead of strings:
+
+```yaml
+citations_path: data.citations
+citation_id_path: document.id
+citation_text_path: title
+```
+
+The report records `first_token_latency_ms`, total latency, and output character count for streamed responses. Character count is intentionally used instead of a tokenizer-specific token count so the adapter remains framework-agnostic.

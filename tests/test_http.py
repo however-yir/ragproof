@@ -68,4 +68,26 @@ def test_streaming_openai_chunks_are_joined():
         )
     )
     adapter.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
-    assert adapter.ask("q").answer == "hello"
+    response = adapter.ask("q")
+    assert response.answer == "hello"
+    assert response.streamed
+    assert response.first_token_latency_ms is not None
+    assert response.output_char_count == 5
+
+
+def test_citation_objects_can_map_document_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"answer": "ok", "citations": [{"document": {"id": "doc-1"}}]})
+
+    adapter = HTTPAdapter(
+        AdapterConfig(
+            base_url="http://test",
+            endpoint="/answer",
+            method="POST",
+            answer_path="answer",
+            citations_path="citations",
+            citation_id_path="document.id",
+        )
+    )
+    adapter.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
+    assert adapter.ask("q").citations == ["doc-1"]
