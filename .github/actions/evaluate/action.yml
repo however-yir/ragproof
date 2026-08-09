@@ -26,6 +26,9 @@ inputs:
   required-metrics:
     description: Newline-separated metrics that must be available for every selected sample.
     required: false
+  required-fields:
+    description: Newline-separated response fields that must be available for every selected sample.
+    required: false
   python-version:
     description: Python version used to run ragproof.
     required: false
@@ -53,12 +56,16 @@ runs:
         RAGPROOF_CONFIG: ${{ inputs.config }}
         RAGPROOF_OUTPUT: ${{ inputs.output }}
         RAGPROOF_REQUIRED_METRICS: ${{ inputs['required-metrics'] }}
+        RAGPROOF_REQUIRED_FIELDS: ${{ inputs['required-fields'] }}
       run: |
         set -euo pipefail
         required_args=()
         while IFS= read -r metric; do
           [[ -n "$metric" ]] && required_args+=(--require-metric "$metric")
         done <<< "$RAGPROOF_REQUIRED_METRICS"
+        while IFS= read -r field; do
+          [[ -n "$field" ]] && required_args+=(--require-field "$field")
+        done <<< "$RAGPROOF_REQUIRED_FIELDS"
         ragproof run -c "$RAGPROOF_CONFIG" -o "$RAGPROOF_OUTPUT" "${required_args[@]}"
 
     - name: Compare against baseline

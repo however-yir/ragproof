@@ -74,6 +74,8 @@ class AdapterConfig(BaseModel):
     citations_path: str | None = None
     citation_id_path: str | None = None
     citation_text_path: str | None = None
+    fallback_path: str | None = None
+    expected_fallback: bool | None = None
 
     @field_validator("method")
     @classmethod

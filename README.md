@@ -168,6 +168,8 @@ adapter:
   context_id_path: docId                    # 每个上下文条目的 id 字段
   citations_path: data.citations            # 引用列表
   citation_id_path: document.id             # 引用对象的文档 ID（可选）
+  fallback_path: fallback                   # 可选：明确的服务降级标记
+  expected_fallback: false                  # 评测时拒绝 fallback=true 的回答
   bearer_token_env: KNOWLEDGEOPS_API_KEY    # 自动生成 Authorization: Bearer ...
 
 judge:

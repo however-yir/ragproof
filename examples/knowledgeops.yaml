@@ -1,39 +1,40 @@
 # ragproof configuration for knowledgeops-agent
-# Endpoint: POST /ai/pdf/chat  (tenant-scoped RAG Q&A with citations)
+# Endpoint: POST /ai/react/chat (structured answer, evidence, citations, fallback)
 #
 # Prerequisites:
 #   1. knowledgeops-agent running at http://localhost:8080
 #   2. Set env var: KNOWLEDGEOPS_API_KEY=<your-dev-api-key>
 #      (see .env.example in knowledgeops-agent repo)
-#   3. Upload at least one PDF via /ai/pdf/upload/{chatId} first
+#   3. Seed the KnowledgeOps knowledge base with the documents represented by
+#      this dataset before using it as a quality gate.
 
 name: knowledgeops-rag-eval
 
-dataset: examples/dataset.sample.jsonl
+dataset: examples/dataset.knowledgeops.jsonl
 
 adapter:
   type: http
   base_url: http://localhost:8080
-  endpoint: /ai/pdf/chat
+  endpoint: /ai/react/chat
   method: POST
   headers:
     X-API-Key: "${KNOWLEDGEOPS_API_KEY}"
     Content-Type: application/json
     X-Tenant-Id: "demo-tenant"
-  json_field: message
+  json_field: prompt
   extra_json:
     chatId: "eval-session-001"
-    stream: false
-  # Response field mapping (adjust to match your actual response schema)
-  answer_path: data.answer
-  contexts_path: data.contexts
-  context_id_path: docId
-  citations_path: data.citations
+    modelProfile: "quality"
+  answer_path: answer
+  contexts_path: evidence
+  citations_path: citations
+  fallback_path: fallback
+  expected_fallback: false
   timeout: 60.0
 
 judge:
-  enabled: true
-  # Point at Ollama (local) or any OpenAI-compatible endpoint
+  enabled: false
+  # Enable only when a judge endpoint and model version are explicitly chosen.
   base_url: http://localhost:11434/v1
   api_key_env: RAGPROOF_JUDGE_API_KEY   # set to any string for Ollama
   model: qwen2.5:7b

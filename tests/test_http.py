@@ -91,3 +91,26 @@ def test_citation_objects_can_map_document_id():
     )
     adapter.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
     assert adapter.ask("q").citations == ["doc-1"]
+
+
+def test_expected_fallback_rejects_deterministic_degradation():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"answer": "ok", "fallback": True})
+
+    adapter = HTTPAdapter(
+        AdapterConfig(
+            base_url="http://test",
+            endpoint="/answer",
+            method="POST",
+            answer_path="answer",
+            fallback_path="fallback",
+            expected_fallback=False,
+        )
+    )
+    adapter.client = httpx.Client(base_url="http://test", transport=httpx.MockTransport(handler))
+
+    response = adapter.ask("q")
+
+    assert response.answer == "ok"
+    assert response.error_type == "response_contract"
+    assert response.error == "response fallback flag must be false"

@@ -28,4 +28,17 @@ citation_id_path: document.id
 citation_text_path: title
 ```
 
+When an API explicitly tells clients that it returned a deterministic fallback,
+make that part of the evaluation contract instead of inferring it from answer
+text:
+
+```yaml
+fallback_path: fallback
+expected_fallback: false
+```
+
+With this mapping, `fallback: true`, a missing field, or a non-boolean value
+becomes a `response_contract` error for the sample. The bundled
+`examples/knowledgeops.yaml` uses this for `/ai/react/chat`.
+
 The report records `first_token_latency_ms`, total latency, and output character count for streamed responses. Character count is intentionally used instead of a tokenizer-specific token count so the adapter remains framework-agnostic.

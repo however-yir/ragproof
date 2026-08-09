@@ -225,6 +225,19 @@ class HTTPAdapter:
         if isinstance(mapped_answer, list):
             mapped_answer = "".join(str(part) for part in mapped_answer)
         latency = (time.perf_counter() - start) * 1000
+        fallback = _dig(data, cfg.fallback_path)
+        if cfg.expected_fallback is not None and fallback is not cfg.expected_fallback:
+            return RAGResponse(
+                question=question,
+                answer=str(mapped_answer) if mapped_answer is not None else "",
+                contexts=contexts,
+                context_ids=context_ids,
+                citations=citations,
+                latency_ms=latency,
+                error=f"response fallback flag must be {str(cfg.expected_fallback).lower()}",
+                error_type="response_contract",
+                raw=data if isinstance(data, dict) else None,
+            )
         return RAGResponse(
             question=question,
             answer=str(mapped_answer) if mapped_answer is not None else "",
