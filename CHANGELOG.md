@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a searchable MkDocs/GitHub Pages site whose build reruns the 60-sample public HTTP benchmark and publishes the current full report.
+- Reworked the README around a reproducible quickstart, benchmark evidence, architecture, scope boundaries, and honest adjacent-tool positioning; added reproducible terminal and social-preview assets.
+- Replaced the unused Release Drafter configuration with the existing CHANGELOG-backed release path, moved questions to Discussions, and documented bounded newcomer contribution tasks.
 - Added native bounded async HTTP I/O, explicit adapter/Judge lifecycles, modular transport/SSE/mapping/contract stages, and multi-event SSE accumulation for answers, contexts, and citations.
 - Added batch-wise JSONL evaluation with an atomic result sink, streaming provenance hashes, prefix-indexed near-duplicate detection, graded qrels, configurable ID normalization, and deterministic rank perturbation sensitivity.
 - Renamed the lexical answer proxy to `lexical_token_f1` while retaining a one-release deprecated `semantic_similarity` alias; strengthened claim support and added configurable English/Chinese refusal rules and exceptions.

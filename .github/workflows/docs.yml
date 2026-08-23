@@ -1,0 +1,71 @@
+name: Docs
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install documentation dependencies
+        run: python -m pip install -e ".[docs]"
+      - name: Run the public HTTP benchmark
+        run: |
+          python examples/public_benchmark_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 20); do
+            curl --fail --silent http://127.0.0.1:8766/health && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8766/health
+          ragproof run -c examples/public-http-benchmark.yaml -o runs/docs-current.json
+          ragproof compare \
+            --baseline examples/baselines/public-http-p1.json \
+            --current runs/docs-current.json \
+            --threshold "recall@3=1.0" \
+            --threshold "mrr=1.0" \
+            --threshold "citation_validity=1.0" \
+            --max "error_rate<=0.0"
+          python scripts/generate_public_benchmark_docs.py runs/docs-current.json
+      - name: Build documentation
+        run: mkdocs build --strict
+      - name: Upload Pages artifact
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: site
+
+  deploy:
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

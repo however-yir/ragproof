@@ -53,10 +53,14 @@
 | 47 | Baseline/current 样本对照 | HTML/Markdown report |
 | 48 | 趋势/分组可视化数据 | trend HTML + group heatmap table |
 | 49 | 覆盖率分层门槛 | `.github/workflows/ci.yml` |
-| 50 | 版本/发行准备 | `0.4.0` + CHANGELOG + release workflow |
+| 50 | 版本/发行准备 | `pyproject.toml` + `CHANGELOG.md` + `.github/workflows/release.yml`（当前版本 `0.4.1`） |
 
-第 50 项的 GitHub Release 仍由 tag 触发；本次代码推送不会自动替用户创建外部发行或启用 PyPI Trusted Publisher。
+第 50 项由 `v*` tag 触发发行流程；当前最新正式版本为 `v0.4.1`。普通代码推送不会创建 Release，PyPI 发布仍受仓库变量和 Trusted Publisher 配置控制。
 
 ## P1 加固补充
 
 P1 后续把 HTTP adapter 拆为传输、SSE 解码、响应映射和契约校验四层，并加入多事件 SSE、原生 `AsyncClient`、批次 JSONL 结果槽、graded qrels、ID 归一化、可配置拒答规则、历史格式/报告契约/Hypothesis 测试、60 条透明合成基准及两条负向门禁。CI 同时覆盖 Python 3.10–3.13、macOS/Windows 冒烟、Action/YAML 元数据校验和全 SHA 固定；tag 发布会生成 SBOM、SHA256 校验和及 GitHub artifact attestation。
+
+## P2 展示与治理补充
+
+P2 增加可搜索的 MkDocs/GitHub Pages 文档站，把 README 首屏重组为问题、30 秒体验、可复现证据、架构与适用边界，并提交可复现的终端 GIF 和社交预览图。仓库治理改为 Discussions 承接问答，空 Wiki 关闭；未接通且与 CHANGELOG 发行流程重复的 Release Drafter 配置已删除，并以有明确范围和验收标准的 `good first issue` 作为外部贡献入口。

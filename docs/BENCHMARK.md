@@ -6,13 +6,13 @@ The mock adapter is a deterministic smoke test, not a quality benchmark. For a m
 
 The repository includes a deterministic benchmark that exercises the real HTTP adapter rather than the in-process mock adapter:
 
-- corpus: `examples/public_benchmark_corpus.jsonl` (75 synthetic documents, CC0-1.0)
-- questions: `examples/dataset.public-http.en.jsonl` (60 English/Chinese questions covering unanswerable, multihop, hard-negative, citation, and paraphrase cases, CC0-1.0)
-- manifest/license: `examples/benchmark-manifest.json` and `examples/BENCHMARK_LICENSE.md` (paths, SHA-256 values, and CC0 evidence checked in CI)
-- service: `examples/public_benchmark_server.py` (stdlib lexical retrieval, no model or network dependency)
-- configuration: `examples/public-http-benchmark.yaml`
-- known-good run: `examples/baselines/public-http-p1.json`
-- negative controls: `examples/public-http-negative-ranking.yaml` and `examples/public-http-negative-citations.yaml`
+- corpus: [`examples/public_benchmark_corpus.jsonl`](https://github.com/however-yir/ragproof/blob/main/examples/public_benchmark_corpus.jsonl) (75 synthetic documents, CC0-1.0)
+- questions: [`examples/dataset.public-http.en.jsonl`](https://github.com/however-yir/ragproof/blob/main/examples/dataset.public-http.en.jsonl) (60 English/Chinese questions covering unanswerable, multihop, hard-negative, citation, and paraphrase cases, CC0-1.0)
+- manifest/license: [`examples/benchmark-manifest.json`](https://github.com/however-yir/ragproof/blob/main/examples/benchmark-manifest.json) and [`examples/BENCHMARK_LICENSE.md`](https://github.com/however-yir/ragproof/blob/main/examples/BENCHMARK_LICENSE.md) (paths, SHA-256 values, and CC0 evidence checked in CI)
+- service: [`examples/public_benchmark_server.py`](https://github.com/however-yir/ragproof/blob/main/examples/public_benchmark_server.py) (stdlib lexical retrieval, no model or network dependency)
+- configuration: [`examples/public-http-benchmark.yaml`](https://github.com/however-yir/ragproof/blob/main/examples/public-http-benchmark.yaml)
+- known-good run: [`examples/baselines/public-http-p1.json`](https://github.com/however-yir/ragproof/blob/main/examples/baselines/public-http-p1.json)
+- negative controls: [`examples/public-http-negative-ranking.yaml`](https://github.com/however-yir/ragproof/blob/main/examples/public-http-negative-ranking.yaml) and [`examples/public-http-negative-citations.yaml`](https://github.com/however-yir/ragproof/blob/main/examples/public-http-negative-citations.yaml)
 
 Run the same gate locally:
 

@@ -1,5 +1,11 @@
 # Roadmap
 
+## Shipped on main (unreleased)
+
+- Expanded the public HTTP benchmark to 60 multilingual, unanswerable, multihop, hard-negative, citation, and paraphrase samples, with two negative controls that must fail.
+- Added native bounded async HTTP evaluation, batch JSONL result sinks, graded qrels, ID normalization, configurable refusal rules, and broader compatibility/contract tests.
+- Added a searchable MkDocs/GitHub Pages site that rebuilds and publishes the current full public benchmark report.
+
 ## Shipped in 0.4.1
 
 - Renamed the Python distribution to `ragproof-cli` to avoid the unrelated `ragproof` project on PyPI while keeping the `ragproof` import and command stable.
@@ -36,7 +42,6 @@
 ## Next milestones
 
 - Native OpenAI Assistants thread polling and more framework-specific adapters.
-- Expand the public benchmark with Chinese, unanswerable, and citation-required slices.
 - Publish first-party adapter examples and define compatibility contracts for third-party plugins.
 - Bind the `ragproof-cli` PyPI Trusted Publisher and enable verified package publication.
 - Explore hosted annotation integrations without weakening the local-first workflow.

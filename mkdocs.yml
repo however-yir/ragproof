@@ -1,0 +1,87 @@
+site_name: ragproof
+site_description: Framework-agnostic RAG evaluation and regression gates
+site_url: https://however-yir.github.io/ragproof/
+repo_url: https://github.com/however-yir/ragproof
+repo_name: however-yir/ragproof
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.snippets:
+      base_path: docs
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Get started:
+      - 30-second quickstart: QUICKSTART.md
+      - CLI reference: CLI_REFERENCE.md
+  - Evaluate:
+      - Current benchmark report: PUBLIC_BENCHMARK_REPORT.md
+      - Benchmark method and scope: BENCHMARK.md
+      - Dataset schema: DATASET_SCHEMA.md
+      - Adapter guide: ADAPTERS.md
+      - CI regression gates: CI_TUTORIAL.md
+  - Reference:
+      - Python extension API: API_REFERENCE.md
+      - Run artifact schema: SCHEMA_REFERENCE.md
+      - Architecture: ARCHITECTURE.md
+      - Mock report example: sample-report.md
+  - Maintain:
+      - Releasing: RELEASING.md
+      - Trusted publishing: TRUSTED_PUBLISHING.md
+      - Optimization record: OPTIMIZATION_50.md
+
+copyright: Copyright &copy; however-yir · MIT licensed
