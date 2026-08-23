@@ -73,7 +73,7 @@ def test_dataset_manifest_and_stratification(tmp_path):
     samples = [Sample.model_validate(json.loads(line)) for line in source.read_text().splitlines()]
     assert near_duplicate_questions(samples, threshold=0.5)
     assert {sample.tags[0] for sample in stratified_sample(samples, 2, dimension="tags", seed=1)} == {"en", "zh"}
-    assert redact_text("mail x@y.example and sk_test_abcdefghijklmnop") == "mail [REDACTED_EMAIL] and [REDACTED_SECRET]"
+    assert redact_text("mail x@y.example and sk_example_abcdefghijklmnop") == "mail [REDACTED_EMAIL] and [REDACTED_SECRET]"
     assert not validate(source)
 
 

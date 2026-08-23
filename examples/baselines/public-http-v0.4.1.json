@@ -1,0 +1,1224 @@
+{
+  "name": "public-http-retrieval-benchmark",
+  "ragproof_version": "0.4.1",
+  "timestamp": "2026-08-23T13:18:33.150839+00:00",
+  "duration_ms": 31.3307500036899,
+  "git_sha": "3f3756b0139e740f443ea81320b13da37a17d3c7",
+  "dataset": "examples/dataset.public-http.en.jsonl",
+  "dataset_sample_count": 8,
+  "sample_count": 8,
+  "provenance": {
+    "schema_version": 2,
+    "dataset_sha256": "1c059ddec8441026d7da42facf3bd30cba0daeab4630103972e553164350a72a",
+    "config_sha256": "cdf545cbf98a93144da3a2417913742d8cc790b0ff5adca736e098e7d9f1e85f",
+    "selected_sample_ids_sha256": "d3fad89b72694b95927e542394c4c00517acf84ca985b3b354f26f9cc870f55c",
+    "dataset_manifest": {
+      "path": "examples/dataset.public-http.en.jsonl",
+      "format": "jsonl",
+      "sample_count": 8,
+      "sha256": "1c059ddec8441026d7da42facf3bd30cba0daeab4630103972e553164350a72a",
+      "sample_ids_sha256": "d3fad89b72694b95927e542394c4c00517acf84ca985b3b354f26f9cc870f55c",
+      "tags": [
+        "access",
+        "en",
+        "privacy",
+        "public-benchmark",
+        "reliability",
+        "retention",
+        "security",
+        "support"
+      ],
+      "difficulties": [
+        "easy",
+        "medium"
+      ]
+    },
+    "judge_prompt_version": "builtin-v1",
+    "judge_prompt_sha256": null,
+    "adapter_type": "http",
+    "group_by": [
+      "tags",
+      "difficulty"
+    ]
+  },
+  "top_ks": [
+    3
+  ],
+  "config_summary": {
+    "name": "public-http-retrieval-benchmark",
+    "dataset": "examples/dataset.public-http.en.jsonl",
+    "adapter": {
+      "type": "http",
+      "base_url": "http://127.0.0.1:8766",
+      "endpoint": "/query",
+      "method": "POST",
+      "headers": {},
+      "timeout": 60.0,
+      "retries": 0,
+      "retry_backoff": 0.25,
+      "json_field": "question",
+      "extra_params": {},
+      "extra_json": {
+        "top_k": 3
+      },
+      "stream": false,
+      "stream_done_markers": [
+        "[DONE]"
+      ],
+      "tokenizer": "heuristic",
+      "answer_path": "answer",
+      "contexts_path": "contexts",
+      "context_id_path": "id",
+      "context_text_path": "text",
+      "citations_path": "citations"
+    },
+    "judge": {
+      "enabled": false,
+      "base_url": "http://localhost:11434/v1",
+      "model": "qwen2.5:7b",
+      "models": [],
+      "vote": "mean",
+      "timeout": 60.0,
+      "retries": 1,
+      "retry_backoff": 0.5,
+      "skip_on_error": true,
+      "structured_output": true,
+      "cache_enabled": true,
+      "cost_per_1k_tokens": 0.0,
+      "prompt_overrides": {},
+      "prompt_version": "builtin-v1"
+    },
+    "concurrency": 2,
+    "retries": 1,
+    "top_ks": [
+      3
+    ],
+    "sample_limit": null,
+    "include_tags": [],
+    "exclude_tags": [],
+    "seed": null,
+    "group_by": [
+      "tags",
+      "difficulty"
+    ],
+    "required_fields": [
+      "answers",
+      "citations",
+      "context_ids",
+      "contexts"
+    ],
+    "min_sample_count": 8,
+    "min_coverage": {},
+    "stratify_by": null,
+    "tokenizer": "heuristic",
+    "embedding_model": null,
+    "required_metrics": [
+      "citation_validity",
+      "mrr",
+      "recall@3"
+    ]
+  },
+  "aggregate": {
+    "recall@3": 1.0,
+    "precision@3": 0.3333333333333333,
+    "ndcg@3": 1.0,
+    "map@3": 1.0,
+    "hit_rate@3": 1.0,
+    "rank_sensitivity@3": 0.3422675616071356,
+    "mrr": 1.0,
+    "duplicate_rate": 0.0,
+    "citation_coverage": 1.0,
+    "citation_validity": 1.0,
+    "citation_precision": 1.0,
+    "citation_recall": 1.0,
+    "citation_span_overlap": 1.0,
+    "exact_match": 1.0,
+    "semantic_similarity": 1.0,
+    "empty_answer_rate": 0.0,
+    "refusal_rate": 0.0,
+    "unanswerable_correctness": 1.0,
+    "context_utilization": 1.0,
+    "context_redundancy": 0.16469911593834008,
+    "context_diversity": 0.83530088406166,
+    "claim_support": 1.0,
+    "output_token_count": 10.0,
+    "tokens_per_second": 9944.614305525301,
+    "avg_latency_ms": 1.170062372693792,
+    "p50_latency_ms": 1.0077500191982836,
+    "p95_latency_ms": 2.341874991543591,
+    "stream_rate": 0.0,
+    "error_rate": 0.0
+  },
+  "groups": {
+    "tags": {
+      "en": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.3422675616071356,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.16469911593834008,
+        "context_diversity": 0.83530088406166,
+        "claim_support": 1.0,
+        "output_token_count": 10.0,
+        "tokens_per_second": 9944.614305525301,
+        "avg_latency_ms": 1.170062372693792,
+        "p50_latency_ms": 1.0077500191982836,
+        "p95_latency_ms": 2.341874991543591,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "public-benchmark": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.3422675616071356,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.16469911593834008,
+        "context_diversity": 0.83530088406166,
+        "claim_support": 1.0,
+        "output_token_count": 10.0,
+        "tokens_per_second": 9944.614305525301,
+        "avg_latency_ms": 1.170062372693792,
+        "p50_latency_ms": 1.0077500191982836,
+        "p95_latency_ms": 2.341874991543591,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "retention": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.43453512321427123,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.18945868945868943,
+        "context_diversity": 0.8105413105413106,
+        "claim_support": 1.0,
+        "output_token_count": 7.5,
+        "tokens_per_second": 5751.926982109518,
+        "avg_latency_ms": 1.6407079965574667,
+        "p50_latency_ms": 0.9395410015713423,
+        "p95_latency_ms": 2.341874991543591,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "security": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.43453512321427123,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.20454545454545453,
+        "context_diversity": 0.7954545454545454,
+        "claim_support": 1.0,
+        "output_token_count": 11.0,
+        "tokens_per_second": 9128.233891409254,
+        "avg_latency_ms": 1.2008750054519624,
+        "p50_latency_ms": 1.0077500191982836,
+        "p95_latency_ms": 1.3939999917056412,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "access": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.10344827586206895,
+        "context_diversity": 0.896551724137931,
+        "claim_support": 1.0,
+        "output_token_count": 9.0,
+        "tokens_per_second": 7109.004702383565,
+        "avg_latency_ms": 1.2660000065807253,
+        "p50_latency_ms": 1.2660000065807253,
+        "p95_latency_ms": 1.2660000065807253,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "privacy": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.0,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.24242424242424243,
+        "context_diversity": 0.7575757575757576,
+        "claim_support": 1.0,
+        "output_token_count": 11.0,
+        "tokens_per_second": 16008.73218897445,
+        "avg_latency_ms": 0.6871249934192747,
+        "p50_latency_ms": 0.6871249934192747,
+        "p95_latency_ms": 0.6871249934192747,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "reliability": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.0,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.12121212121212122,
+        "context_diversity": 0.8787878787878788,
+        "claim_support": 1.0,
+        "output_token_count": 12.0,
+        "tokens_per_second": 13340.122305962785,
+        "avg_latency_ms": 0.8995419775601476,
+        "p50_latency_ms": 0.8995419775601476,
+        "p95_latency_ms": 0.8995419775601476,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "support": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.0625,
+        "context_diversity": 0.9375,
+        "claim_support": 1.0,
+        "output_token_count": 11.0,
+        "tokens_per_second": 13338.733499844082,
+        "avg_latency_ms": 0.8246659999713302,
+        "p50_latency_ms": 0.8246659999713302,
+        "p95_latency_ms": 0.8246659999713302,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      }
+    },
+    "difficulty": {
+      "easy": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.28969008214284747,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.16670983337650003,
+        "context_diversity": 0.8332901666235001,
+        "claim_support": 1.0,
+        "output_token_count": 9.0,
+        "tokens_per_second": 8281.325423393939,
+        "avg_latency_ms": 1.3936526568916936,
+        "p50_latency_ms": 0.9395410015713423,
+        "p95_latency_ms": 2.341874991543591,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      },
+      "medium": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.3738140492857085,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.1634926854754441,
+        "context_diversity": 0.8365073145245558,
+        "claim_support": 1.0,
+        "output_token_count": 10.6,
+        "tokens_per_second": 10942.58763480412,
+        "avg_latency_ms": 1.035908202175051,
+        "p50_latency_ms": 1.0077500191982836,
+        "p95_latency_ms": 1.3939999917056412,
+        "stream_rate": 0.0,
+        "error_rate": 0.0
+      }
+    }
+  },
+  "coverage": {
+    "fields": {
+      "successful_requests": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "answers": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "contexts": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "context_ids": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "citations": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      }
+    },
+    "metrics": {
+      "citation_coverage": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "citation_precision": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "citation_recall": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "citation_span_overlap": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "citation_validity": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "claim_support": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "context_diversity": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "context_redundancy": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "context_utilization": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "duplicate_rate": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "empty_answer_rate": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "exact_match": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "hit_rate@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "map@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "mrr": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "ndcg@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "output_token_count": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "precision@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "rank_sensitivity@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "recall@3": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "refusal_rate": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "semantic_similarity": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "tokens_per_second": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      },
+      "unanswerable_correctness": {
+        "available": 8,
+        "total": 8,
+        "rate": 1.0
+      }
+    }
+  },
+  "cost": {
+    "estimated_total": 0
+  },
+  "results": [
+    {
+      "id": "public-en-001",
+      "question": "How long are customer invoices retained?",
+      "answer": "Customer invoices are retained for seven years.",
+      "contexts": [
+        "Customer invoices are retained for seven years.",
+        "Encrypted production backups are retained for thirty days.",
+        "A verified customer deletion request must be completed within thirty days."
+      ],
+      "context_ids": [
+        "policy-invoice-retention",
+        "policy-backups",
+        "policy-deletion"
+      ],
+      "retrieved_doc_ids": [
+        "policy-invoice-retention",
+        "policy-backups",
+        "policy-deletion"
+      ],
+      "citations": [
+        "policy-invoice-retention"
+      ],
+      "expected_citations": [
+        "policy-invoice-retention"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "retention"
+      ],
+      "difficulty": "easy",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 2.341874991543591,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 7,
+      "tokens_per_second": 2989.0579237904226,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.23076923076923073,
+        "context_diversity": 0.7692307692307693,
+        "claim_support": 1.0,
+        "output_token_count": 7.0,
+        "tokens_per_second": 2989.0579237904226
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-invoice-retention",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-002",
+      "question": "Who must approve a production access request?",
+      "answer": "A service owner and a security reviewer must approve every production access request.",
+      "contexts": [
+        "A service owner and a security reviewer must approve every production access request.",
+        "A verified customer deletion request must be completed within thirty days.",
+        "The production service availability target is 99.9 percent per calendar month."
+      ],
+      "context_ids": [
+        "policy-production-access",
+        "policy-deletion",
+        "policy-availability"
+      ],
+      "retrieved_doc_ids": [
+        "policy-production-access",
+        "policy-deletion",
+        "policy-availability"
+      ],
+      "citations": [
+        "policy-production-access"
+      ],
+      "expected_citations": [
+        "policy-production-access"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "security"
+      ],
+      "difficulty": "medium",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 1.3939999917056412,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 13,
+      "tokens_per_second": 9325.681547597238,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.16666666666666663,
+        "context_diversity": 0.8333333333333334,
+        "claim_support": 1.0,
+        "output_token_count": 13.0,
+        "tokens_per_second": 9325.681547597238
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-production-access",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-003",
+      "question": "How long are encrypted production backups retained?",
+      "answer": "Encrypted production backups are retained for thirty days.",
+      "contexts": [
+        "Encrypted production backups are retained for thirty days.",
+        "Customer invoices are retained for seven years.",
+        "The production service availability target is 99.9 percent per calendar month."
+      ],
+      "context_ids": [
+        "policy-backups",
+        "policy-invoice-retention",
+        "policy-availability"
+      ],
+      "retrieved_doc_ids": [
+        "policy-backups",
+        "policy-invoice-retention",
+        "policy-availability"
+      ],
+      "citations": [
+        "policy-backups"
+      ],
+      "expected_citations": [
+        "policy-backups"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "retention"
+      ],
+      "difficulty": "easy",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 0.9395410015713423,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 8,
+      "tokens_per_second": 8514.796040428613,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.36907024642854247,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.14814814814814814,
+        "context_diversity": 0.8518518518518519,
+        "claim_support": 1.0,
+        "output_token_count": 8.0,
+        "tokens_per_second": 8514.796040428613
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-backups",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-004",
+      "question": "How quickly must critical security incidents be acknowledged?",
+      "answer": "Critical security incidents must be acknowledged within fifteen minutes.",
+      "contexts": [
+        "Critical security incidents must be acknowledged within fifteen minutes.",
+        "A verified customer deletion request must be completed within thirty days.",
+        "A service owner and a security reviewer must approve every production access request."
+      ],
+      "context_ids": [
+        "policy-incidents",
+        "policy-deletion",
+        "policy-production-access"
+      ],
+      "retrieved_doc_ids": [
+        "policy-incidents",
+        "policy-deletion",
+        "policy-production-access"
+      ],
+      "citations": [
+        "policy-incidents"
+      ],
+      "expected_citations": [
+        "policy-incidents"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "security"
+      ],
+      "difficulty": "medium",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 1.0077500191982836,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 9,
+      "tokens_per_second": 8930.786235221269,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.36907024642854247,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.24242424242424243,
+        "context_diversity": 0.7575757575757576,
+        "claim_support": 1.0,
+        "output_token_count": 9.0,
+        "tokens_per_second": 8930.786235221269
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-incidents",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-005",
+      "question": "Which accounts require multi-factor authentication?",
+      "answer": "Multi-factor authentication is required for every administrator account.",
+      "contexts": [
+        "Multi-factor authentication is required for every administrator account.",
+        "The production service availability target is 99.9 percent per calendar month.",
+        "Encrypted production backups are retained for thirty days."
+      ],
+      "context_ids": [
+        "policy-mfa",
+        "policy-availability",
+        "policy-backups"
+      ],
+      "retrieved_doc_ids": [
+        "policy-mfa",
+        "policy-availability",
+        "policy-backups"
+      ],
+      "citations": [
+        "policy-mfa"
+      ],
+      "expected_citations": [
+        "policy-mfa"
+      ],
+      "tags": [
+        "access",
+        "en",
+        "public-benchmark"
+      ],
+      "difficulty": "medium",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 1.2660000065807253,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 9,
+      "tokens_per_second": 7109.004702383565,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.10344827586206895,
+        "context_diversity": 0.896551724137931,
+        "claim_support": 1.0,
+        "output_token_count": 9.0,
+        "tokens_per_second": 7109.004702383565
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-mfa",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-006",
+      "question": "When must a verified customer deletion request be completed?",
+      "answer": "A verified customer deletion request must be completed within thirty days.",
+      "contexts": [
+        "A verified customer deletion request must be completed within thirty days.",
+        "A service owner and a security reviewer must approve every production access request.",
+        "Critical security incidents must be acknowledged within fifteen minutes."
+      ],
+      "context_ids": [
+        "policy-deletion",
+        "policy-production-access",
+        "policy-incidents"
+      ],
+      "retrieved_doc_ids": [
+        "policy-deletion",
+        "policy-production-access",
+        "policy-incidents"
+      ],
+      "citations": [
+        "policy-deletion"
+      ],
+      "expected_citations": [
+        "policy-deletion"
+      ],
+      "tags": [
+        "en",
+        "privacy",
+        "public-benchmark"
+      ],
+      "difficulty": "medium",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 0.6871249934192747,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 11,
+      "tokens_per_second": 16008.73218897445,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.0,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.24242424242424243,
+        "context_diversity": 0.7575757575757576,
+        "claim_support": 1.0,
+        "output_token_count": 11.0,
+        "tokens_per_second": 16008.73218897445
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-deletion",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-007",
+      "question": "What is the monthly production service availability target?",
+      "answer": "The production service availability target is 99.9 percent per calendar month.",
+      "contexts": [
+        "The production service availability target is 99.9 percent per calendar month.",
+        "A service owner and a security reviewer must approve every production access request.",
+        "Encrypted production backups are retained for thirty days."
+      ],
+      "context_ids": [
+        "policy-availability",
+        "policy-production-access",
+        "policy-backups"
+      ],
+      "retrieved_doc_ids": [
+        "policy-availability",
+        "policy-production-access",
+        "policy-backups"
+      ],
+      "citations": [
+        "policy-availability"
+      ],
+      "expected_citations": [
+        "policy-availability"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "reliability"
+      ],
+      "difficulty": "easy",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 0.8995419775601476,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 12,
+      "tokens_per_second": 13340.122305962785,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.0,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.12121212121212122,
+        "context_diversity": 0.8787878787878788,
+        "claim_support": 1.0,
+        "output_token_count": 12.0,
+        "tokens_per_second": 13340.122305962785
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-availability",
+          "valid": true
+        }
+      ]
+    },
+    {
+      "id": "public-en-008",
+      "question": "What is the initial response time for a priority-one support incident?",
+      "answer": "Priority-one support incidents receive an initial response within one hour.",
+      "contexts": [
+        "Priority-one support incidents receive an initial response within one hour.",
+        "The production service availability target is 99.9 percent per calendar month.",
+        "Multi-factor authentication is required for every administrator account."
+      ],
+      "context_ids": [
+        "policy-priority-support",
+        "policy-availability",
+        "policy-mfa"
+      ],
+      "retrieved_doc_ids": [
+        "policy-priority-support",
+        "policy-availability",
+        "policy-mfa"
+      ],
+      "citations": [
+        "policy-priority-support"
+      ],
+      "expected_citations": [
+        "policy-priority-support"
+      ],
+      "tags": [
+        "en",
+        "public-benchmark",
+        "support"
+      ],
+      "difficulty": "medium",
+      "answerable": true,
+      "metadata": {},
+      "latency_ms": 0.8246659999713302,
+      "first_token_latency_ms": null,
+      "output_char_count": null,
+      "output_token_count": 11,
+      "tokens_per_second": 13338.733499844082,
+      "streamed": false,
+      "error": null,
+      "error_type": null,
+      "metrics": {
+        "recall@3": 1.0,
+        "precision@3": 0.3333333333333333,
+        "ndcg@3": 1.0,
+        "map@3": 1.0,
+        "hit_rate@3": 1.0,
+        "rank_sensitivity@3": 0.5,
+        "mrr": 1.0,
+        "duplicate_rate": 0.0,
+        "citation_coverage": 1.0,
+        "citation_validity": 1.0,
+        "citation_precision": 1.0,
+        "citation_recall": 1.0,
+        "citation_span_overlap": 1.0,
+        "exact_match": 1.0,
+        "semantic_similarity": 1.0,
+        "empty_answer_rate": 0.0,
+        "refusal_rate": 0.0,
+        "unanswerable_correctness": 1.0,
+        "context_utilization": 1.0,
+        "context_redundancy": 0.0625,
+        "context_diversity": 0.9375,
+        "claim_support": 1.0,
+        "output_token_count": 11.0,
+        "tokens_per_second": 13338.733499844082
+      },
+      "judge": {},
+      "citation_matches": [
+        {
+          "citation": "policy-priority-support",
+          "valid": true
+        }
+      ]
+    }
+  ]
+}

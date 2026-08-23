@@ -21,8 +21,16 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$version"
       - name: Build distributions
         run: |
-          python -m pip install --upgrade build
+          python -m pip install --upgrade build twine
           python -m build
+          twine check dist/*
+      - name: Smoke-test built wheel
+        run: |
+          python -m venv .release-venv
+          .release-venv/bin/pip install dist/*.whl
+          .release-venv/bin/ragproof --version
+          .release-venv/bin/ragproof run -c examples/mock.yaml -o .release-smoke/run.json
+          .release-venv/bin/ragproof report .release-smoke/run.json -o .release-smoke/report.html
       - name: Upload release assets
         uses: actions/upload-artifact@v7
         with:

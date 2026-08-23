@@ -11,14 +11,14 @@ jobs:
   eval:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install ragproof
-        run: pip install ragproof  # or: pip install -e path/to/ragproof
+        run: pip install "git+https://github.com/however-yir/ragproof.git@v0.4.1"
 
       # Start the RAG system under test (adjust to your stack)
       - name: Start services
@@ -53,7 +53,7 @@ jobs:
       # Always upload the run artifact for inspection
       - name: Upload run artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ragproof-run
           path: runs/current.json

@@ -42,7 +42,7 @@ Use `examples/github-actions.yml` as the starting point. Add secrets only in the
 For new repositories, the bundled composite Action reduces the workflow to:
 
 ```yaml
-- uses: however-yir/ragproof/.github/actions/evaluate@main
+- uses: however-yir/ragproof/.github/actions/evaluate@v0.4.1
   with:
     config: examples/knowledgeops.yaml
     baseline: runs/baseline.json
@@ -57,3 +57,5 @@ For new repositories, the bundled composite Action reduces the workflow to:
 ```
 
 The Action uploads the JSON and HTML report and appends a short summary to the GitHub Job Summary.
+
+Pinning a release tag keeps the workflow reproducible. Security-sensitive consumers can replace `v0.4.1` with the tag's full commit SHA.

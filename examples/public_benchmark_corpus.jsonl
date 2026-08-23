@@ -1,0 +1,8 @@
+{"id":"policy-invoice-retention","text":"Customer invoices are retained for seven years."}
+{"id":"policy-production-access","text":"A service owner and a security reviewer must approve every production access request."}
+{"id":"policy-backups","text":"Encrypted production backups are retained for thirty days."}
+{"id":"policy-incidents","text":"Critical security incidents must be acknowledged within fifteen minutes."}
+{"id":"policy-mfa","text":"Multi-factor authentication is required for every administrator account."}
+{"id":"policy-deletion","text":"A verified customer deletion request must be completed within thirty days."}
+{"id":"policy-availability","text":"The production service availability target is 99.9 percent per calendar month."}
+{"id":"policy-priority-support","text":"Priority-one support incidents receive an initial response within one hour."}

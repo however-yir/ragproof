@@ -57,3 +57,43 @@ jobs:
           ragproof dataset-manifest examples/dataset.sample.jsonl --json
           ragproof dataset-lint examples/dataset.sample.jsonl
           ragproof trend runs/ci.json -o runs/ci-trend.json
+
+      - name: Public HTTP benchmark gate
+        run: |
+          python examples/public_benchmark_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            curl --fail --silent http://127.0.0.1:8766/health && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8766/health
+          ragproof run -c examples/public-http-benchmark.yaml -o runs/public-http-current.json
+          ragproof compare \
+            --baseline examples/baselines/public-http-v0.4.1.json \
+            --current runs/public-http-current.json \
+            --threshold "recall@3=1.0" \
+            --threshold "mrr=1.0" \
+            --threshold "citation_validity=1.0" \
+            --max "error_rate=0.0"
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Audit runtime dependencies
+        run: |
+          python -m pip install --upgrade pip-audit
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+          target = Path(os.environ["RUNNER_TEMP"]) / "ragproof-runtime-requirements.txt"
+          target.write_text("\n".join(project["dependencies"]) + "\n", encoding="utf-8")
+          PY
+          pip-audit --requirement "$RUNNER_TEMP/ragproof-runtime-requirements.txt" --strict

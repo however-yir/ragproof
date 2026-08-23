@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1 — 2026-08-23
+
+- Renamed the Python distribution to `ragproof-cli` while preserving the `ragproof` module and console command, preventing accidental installation of an unrelated PyPI project.
+- Added package metadata checks and a clean-wheel smoke test to the release workflow.
+- Added a reproducible public HTTP retrieval corpus, dataset, baseline, and CI gate; corrected the starter benchmark manifest's language labels.
+- Added dependency auditing, CodeQL analysis, private-reporting guidance, and GitHub community templates.
+- Pinned reusable Action documentation to `v0.4.1`, modernized the standalone workflow example, and clearly labeled the mock-generated sample report.
+
 ## 0.4.0 — 2026-08-08
 
 - Added lower-is-better `--max` gates, reusable YAML policies, coverage/sample gates, provenance detail, and direction-aware recommendations.

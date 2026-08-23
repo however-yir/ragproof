@@ -3,9 +3,9 @@
   "schema": "ragproof.dataset.v1",
   "datasets": [
     {
-      "id": "sample-en",
+      "id": "sample-zh-extended",
       "path": "dataset.sample.jsonl",
-      "language": "en",
+      "language": "zh",
       "license": "CC0-1.0",
       "purpose": "offline smoke and adapter contract testing"
     },
@@ -15,6 +15,20 @@
       "language": "zh",
       "license": "CC0-1.0",
       "purpose": "Chinese slicing and tokenization smoke testing"
+    },
+    {
+      "id": "enterprise-en",
+      "path": "dataset.enterprise.en.jsonl",
+      "language": "en",
+      "license": "CC0-1.0",
+      "purpose": "enterprise policy slicing smoke testing"
+    },
+    {
+      "id": "public-http-en",
+      "path": "dataset.public-http.en.jsonl",
+      "language": "en",
+      "license": "CC0-1.0",
+      "purpose": "reproducible HTTP retrieval benchmark with citation gates"
     }
   ]
 }

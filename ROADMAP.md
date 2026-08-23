@@ -1,5 +1,17 @@
 # Roadmap
 
+## Shipped in 0.4.1
+
+- Renamed the Python distribution to `ragproof-cli` to avoid the unrelated `ragproof` project on PyPI while keeping the `ragproof` import and command stable.
+- Added wheel metadata checks, a clean-install release smoke test, dependency auditing, CodeQL, and safer community contribution templates.
+- Added a reproducible public HTTP retrieval corpus, dataset, known-good baseline, and CI regression gate.
+
+## Shipped in 0.4.0
+
+- Lower-is-better and policy-file gates, expanded dataset governance, and richer provenance diagnostics.
+- Multi-run trend summaries, bootstrap intervals, local regression bisect, and JUnit/SARIF output.
+- Optional embedding similarity, multilingual tokenization, richer retrieval/citation metrics, and extended adapters.
+
 ## Shipped in 0.3.1
 
 - Core CI coverage contracts: runner 80%, HTTP adapter 70%, comparison engine 85%, plus a 75% project floor.
@@ -23,9 +35,10 @@
 
 ## Next milestones
 
-- Multi-run trend reports with confidence intervals and bootstrap significance checks.
-- Optional embedding-backed semantic similarity and multilingual tokenizer plugins.
 - Native OpenAI Assistants thread polling and more framework-specific adapters.
-- A public benchmark corpus and a GitHub Project with issue templates for adapter requests.
+- Expand the public benchmark with Chinese, unanswerable, and citation-required slices.
+- Publish first-party adapter examples and define compatibility contracts for third-party plugins.
+- Bind the `ragproof-cli` PyPI Trusted Publisher and enable verified package publication.
+- Explore hosted annotation integrations without weakening the local-first workflow.
 
 When this roadmap becomes a GitHub Project, keep one issue per adapter or metric so adoption feedback can be connected to a concrete release milestone.

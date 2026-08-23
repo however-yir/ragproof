@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible defect in ragproof.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve ragproof. Remove secrets and private dataset content before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: ragproof version
+      description: Paste the output of `ragproof --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Adapter
+      options: [mock, http, langserve, dify, openai, plugin, other]
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include commands and a sanitized configuration or dataset sample.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed API keys, private questions, answers, contexts, and judge-cache data.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

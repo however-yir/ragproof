@@ -1,0 +1,32 @@
+name: Adapter request
+description: Request or propose an integration with a RAG API shape.
+title: "[Adapter]: "
+labels: [adapter, enhancement]
+body:
+  - type: input
+    id: system
+    attributes:
+      label: System or framework
+      placeholder: Dify, LangServe, OpenAI-compatible, or a public API specification
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Sanitized request and response contract
+      description: Show the JSON shape and relevant field paths without credentials or private content.
+    validations:
+      required: true
+  - type: textarea
+    id: limitation
+    attributes:
+      label: Why the generic HTTP adapter is insufficient
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: The example contains no secrets or private evaluation data.
+          required: true

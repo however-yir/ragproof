@@ -1,0 +1,25 @@
+name: public-http-retrieval-benchmark
+dataset: examples/dataset.public-http.en.jsonl
+
+adapter:
+  type: http
+  base_url: http://127.0.0.1:8766
+  endpoint: /query
+  method: POST
+  json_field: question
+  extra_json:
+    top_k: 3
+  answer_path: answer
+  contexts_path: contexts
+  context_id_path: id
+  context_text_path: text
+  citations_path: citations
+
+judge:
+  enabled: false
+
+concurrency: 2
+top_k: 3
+required_metrics: [recall@3, mrr, citation_validity]
+required_fields: [answers, contexts, context_ids, citations]
+min_sample_count: 8

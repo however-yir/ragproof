@@ -1,6 +1,7 @@
 # ragproof — RAG 评测与回归测试 CLI | RAG Evaluation & Regression Testing
 
 [![CI](https://github.com/however-yir/ragproof/actions/workflows/ci.yml/badge.svg)](https://github.com/however-yir/ragproof/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/however-yir/ragproof/actions/workflows/codeql.yml/badge.svg)](https://github.com/however-yir/ragproof/actions/workflows/codeql.yml)
 [![Release](https://img.shields.io/github/v/release/however-yir/ragproof?display_name=tag)](https://github.com/however-yir/ragproof/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -15,7 +16,9 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 
 ---
 
-![ragproof sample report](docs/assets/sample-report-screenshot.png)
+![ragproof mock-generated sample report](docs/assets/sample-report-screenshot.png)
+
+> **Mock-generated demo:** this screenshot demonstrates report structure and UI; it is not evidence of production RAG quality. See the [reproducible public HTTP benchmark](docs/BENCHMARK.md) for a real retrieval gate.
 
 ## Features
 
@@ -44,13 +47,13 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 
 ```bash
 # 安装最新已验证发行版（GitHub Release tag）
-pip install "git+https://github.com/however-yir/ragproof.git@v0.4.0"
+pip install "git+https://github.com/however-yir/ragproof.git@v0.4.1"
 
 # 或从源码安装（开发）
 pip install -e ".[dev]"
 ```
 
-每个 `vX.Y.Z` tag 都会校验包版本、构建 wheel/source archive、创建带 CHANGELOG 摘要的 GitHub Release。PyPI 同名包的归属尚未验证，因此默认不发布；详见 [发行说明](docs/RELEASING.md)。
+发行包名是 `ragproof-cli`，Python 导入名与命令仍是 `ragproof`。PyPI 上的 `ragproof` 属于无关项目，**不要运行 `pip install ragproof`**。在 `ragproof-cli` 的 Trusted Publisher 启用前，请使用上面的固定 Git tag 安装方式。每个 `vX.Y.Z` tag 都会校验版本、检查包元数据、在干净环境烟测 wheel，并创建带 CHANGELOG 摘要的 GitHub Release；详见 [发行说明](docs/RELEASING.md)。
 
 **30 秒离线体验**（mock adapter，无需任何 RAG 系统或模型）：
 
@@ -237,7 +240,7 @@ required_metrics: [recall@5, citation_coverage]
 
 ## Sample Report
 
-仓库内置一份用 mock adapter 跑出的示例（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。报告也支持 CSV、JUnit XML 和 SARIF：`ragproof report runs/current.json -o report.csv`。
+仓库内置一份用 mock adapter 跑出的**界面演示**（截图见文首）：[docs/sample-report.md](docs/sample-report.md)（HTML 版见 [docs/sample-report.html](docs/sample-report.html)）。它不代表生产质量。可复现的真实 HTTP 检索基准、语料、数据集和 baseline 见 [Benchmark 文档](docs/BENCHMARK.md)。报告也支持 CSV、JUnit XML 和 SARIF：`ragproof report runs/current.json -o report.csv`。
 
 更多说明：[数据集规范](docs/DATASET_SCHEMA.md)、[Adapter 指南](docs/ADAPTERS.md)、[CI 教程](docs/CI_TUTORIAL.md)、[架构](docs/ARCHITECTURE.md)、[Benchmark 与适用边界](docs/BENCHMARK.md)。
 
@@ -258,12 +261,14 @@ ragproof validate -c eval/ragproof.yaml
 ## Roadmap
 
 - [x] GitHub Release：tag/版本一致性校验、发行资产与 CHANGELOG 版本说明
-- [ ] PyPI 发布（确认唯一包名与 Trusted Publisher 归属后启用）
+- [x] 唯一发行名 `ragproof-cli` 与 wheel 安装烟测
+- [ ] PyPI 发布（绑定 `ragproof-cli` Trusted Publisher 后启用）
 - [x] LLM judge 结果缓存、结构化原因、多模型投票
 - [x] `compare` 支持相对回归阈值和 delta
 - [x] LangServe / LangChain / LlamaIndex / Dify / OpenAI 兼容预设
 - [x] 多 run 趋势报告、bootstrap 区间和本地回归定位
 - [x] 可选 embedding-backed semantic similarity、启发式中文 tokenizer 和自定义 token 统计
+- [x] 可复现的公共 HTTP 检索基准、固定 baseline 与 CI 门禁
 
 ## Why Another Eval Tool?
 
