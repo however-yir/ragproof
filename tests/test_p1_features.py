@@ -236,6 +236,20 @@ def test_compare_json_is_machine_readable_on_pass_and_failure(tmp_path):
     assert json.loads(failed.output)["passed"] is False
 
 
+def test_cli_status_output_is_ascii_safe(tmp_path):
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps({"id": "ascii", "question": "portable"}) + "\n", encoding="utf-8")
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        f"dataset: {dataset}\nadapter: {{type: mock}}\njudge: {{enabled: false}}\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli, ["run", "-c", str(config), "-o", str(tmp_path / "run.json")])
+    assert result.exit_code == 0
+    result.output.encode("ascii")
+    assert result.output.startswith("[OK]")
+
+
 @pytest.mark.parametrize("version", ["v0.3.x", "v0.4.0", "v0.4.1"])
 def test_historical_run_fixtures_migrate(version):
     run_artifact = load_run(Path("tests/fixtures/runs") / f"{version}.json")

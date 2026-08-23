@@ -67,7 +67,7 @@ concurrency: 4
 """,
         encoding="utf-8",
     )
-    click.echo(f"✔ created {config_path} and {dataset_path}")
+    click.echo(f"[OK] created {config_path} and {dataset_path}")
 
 
 @cli.command("validate")
@@ -87,12 +87,12 @@ def validate_cmd(config_path: str, as_json: bool):
     if as_json:
         click.echo(json.dumps(payload, ensure_ascii=False))
     elif errors:
-        click.echo(f"✘ invalid: {config_path}")
+        click.echo(f"[ERROR] invalid: {config_path}")
         for error in errors:
             click.echo(f"  - {error}")
         raise click.exceptions.Exit(1)
     else:
-        click.echo(f"✔ valid: {config_path}")
+        click.echo(f"[OK] valid: {config_path}")
 
 
 @cli.command("dataset-manifest")
@@ -127,9 +127,9 @@ def dataset_lint_cmd(path: str, near_duplicate_threshold: float, as_json: bool):
     else:
         if errors:
             for error in errors:
-                click.echo(f"✘ {error}")
+                click.echo(f"[ERROR] {error}")
         else:
-            click.echo(f"✔ dataset schema valid; near duplicates: {len(duplicates)}")
+            click.echo(f"[OK] dataset schema valid; near duplicates: {len(duplicates)}")
         if duplicates:
             for left, right, score in duplicates:
                 click.echo(f"  - {left} ~ {right} ({score:.3f})")
@@ -150,10 +150,10 @@ def benchmark_manifest_lint_cmd(path: str, as_json: bool):
         click.echo(json.dumps(payload, ensure_ascii=False))
     elif errors:
         for error in errors:
-            click.echo(f"✘ {error}")
+            click.echo(f"[ERROR] {error}")
         raise click.exceptions.Exit(1)
     else:
-        click.echo(f"✔ benchmark manifest valid: {path}")
+        click.echo(f"[OK] benchmark manifest valid: {path}")
 
 
 @cli.command("trend")
@@ -188,7 +188,7 @@ def trend_cmd(run_paths: tuple[str, ...], output: str, metrics: tuple[str, ...])
         )
     else:
         destination.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    click.echo(f"✔ trend written to {destination}")
+    click.echo(f"[OK] trend written to {destination}")
 
 
 @cli.command("bisect")
@@ -294,10 +294,10 @@ def probe_cmd(config_path: str, questions: tuple[str, ...], output: str | None, 
     if as_json:
         click.echo(json.dumps(result, ensure_ascii=False))
     elif output:
-        click.echo(f"✔ probe complete ({response.latency_ms:.1f} ms); starter config written to {output}")
+        click.echo(f"[OK] probe complete ({response.latency_ms:.1f} ms); starter config written to {output}")
         click.echo(json.dumps(result["mapping"], ensure_ascii=False, indent=2))
     else:
-        click.echo(f"✔ probe complete ({response.latency_ms:.1f} ms); suggested adapter config:\n\n{starter}")
+        click.echo(f"[OK] probe complete ({response.latency_ms:.1f} ms); suggested adapter config:\n\n{starter}")
 
 
 @cli.command("run")
@@ -364,7 +364,7 @@ def run_cmd(
         samples = load(config.dataset, reject_duplicates=config.deduplicate_questions)
         if dry_run:
             payload = {"config": config.summary(), "samples_available": len(samples), "top_ks": config.effective_top_ks()}
-            click.echo(json.dumps(payload, ensure_ascii=False, indent=2) if as_json else f"✔ dry run: {len(samples)} samples available; top-k={config.effective_top_ks()}")
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2) if as_json else f"[OK] dry run: {len(samples)} samples available; top-k={config.effective_top_ks()}")
             return
         report = run(config, output)
     except click.ClickException:
@@ -374,7 +374,7 @@ def run_cmd(
     if as_json:
         click.echo(json.dumps(report, ensure_ascii=False))
         return
-    click.echo(f"✔ {report['sample_count']} samples evaluated → {output}")
+    click.echo(f"[OK] {report['sample_count']} samples evaluated -> {output}")
     for name, value in report["aggregate"].items():
         click.echo(f"  {name:24s} {value:.3f}")
 
@@ -468,9 +468,9 @@ def compare_cmd(
             if not result.passed and os.environ.get("GITHUB_ACTIONS"):
                 click.echo(f"::error title=ragproof regression::{result.metric}: {result.reason}")
     if not all_passed:
-        click.echo("✘ regression gate failed; inspect the HTML report and failed sample IDs for next steps")
+        click.echo("[ERROR] regression gate failed; inspect the HTML report and failed sample IDs for next steps")
         sys.exit(1)
-    click.echo("✔ all thresholds passed")
+    click.echo("[OK] all thresholds passed")
 
 
 @cli.command("report")
@@ -531,7 +531,7 @@ def report_cmd(
         )
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(f"✔ report written to {out}")
+    click.echo(f"[OK] report written to {out}")
     if open_report:
         webbrowser.open(out.resolve().as_uri())
 
