@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added native bounded async HTTP I/O, explicit adapter/Judge lifecycles, modular transport/SSE/mapping/contract stages, and multi-event SSE accumulation for answers, contexts, and citations.
+- Added batch-wise JSONL evaluation with an atomic result sink, streaming provenance hashes, prefix-indexed near-duplicate detection, graded qrels, configurable ID normalization, and deterministic rank perturbation sensitivity.
+- Renamed the lexical answer proxy to `lexical_token_f1` while retaining a one-release deprecated `semantic_similarity` alias; strengthened claim support and added configurable English/Chinese refusal rules and exceptions.
+- Added formal `embedding`, `excel`, and `parquet` extras, Hypothesis properties, historical 0.3/0.4 fixtures, report schema/escaping tests, stricter Ruff security rules, and mypy without command-line blanket ignores.
+- Expanded the transparent synthetic HTTP benchmark from 8 to 60 multilingual, unanswerable, multihop, hard-negative, citation, and paraphrase samples, with ranking/citation negative controls that must fail.
+- Added Python 3.13 plus macOS/Windows smoke jobs, Action/YAML/Issue Form validation, full-SHA Action pins with monthly review issues, and release SBOM, SHA256 checksums, and GitHub artifact attestations.
 - Added versioned run artifacts, a packaged JSON Schema, legacy migration reads, and path-independent configuration fingerprints.
 - Made persisted run artifacts recursively secret/PII-safe, with atomic run/cache writes and strict top-level, Judge, and dataset field validation.
 - Corrected citation span matching to use context IDs and centralized metric direction/range metadata.

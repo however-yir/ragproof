@@ -44,7 +44,7 @@
 | 38 | 缺失环境变量提示 | `RunConfig.validation_errors` |
 | 39 | 值级 secret 脱敏 | config summary / dataset redact |
 | 40 | 安全错误诊断 | HTTP `_safe_error` |
-| 41 | Async-compatible adapter | `HTTPAdapter.aask` |
+| 41 | 原生异步 adapter 与在途并发上限 | `HTTPAdapter.aask` / `async_max_concurrency` |
 | 42 | Preset contract tests | `tests/test_optimizations.py` |
 | 43 | 框架接入示例 | `examples/*.yaml` |
 | 44 | JUnit XML | `report -o report.xml` |
@@ -56,3 +56,7 @@
 | 50 | 版本/发行准备 | `0.4.0` + CHANGELOG + release workflow |
 
 第 50 项的 GitHub Release 仍由 tag 触发；本次代码推送不会自动替用户创建外部发行或启用 PyPI Trusted Publisher。
+
+## P1 加固补充
+
+P1 后续把 HTTP adapter 拆为传输、SSE 解码、响应映射和契约校验四层，并加入多事件 SSE、原生 `AsyncClient`、批次 JSONL 结果槽、graded qrels、ID 归一化、可配置拒答规则、历史格式/报告契约/Hypothesis 测试、60 条透明合成基准及两条负向门禁。CI 同时覆盖 Python 3.10–3.13、macOS/Windows 冒烟、Action/YAML 元数据校验和全 SHA 固定；tag 发布会生成 SBOM、SHA256 校验和及 GitHub artifact attestation。

@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "name": "legacy-v0.4.0",
+  "aggregate": {"mrr": 1.0, "error_rate": 0.0},
+  "results": [{"id": "legacy-040", "metrics": {"mrr": 1.0}}]
+}

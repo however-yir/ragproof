@@ -7,13 +7,12 @@ import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-
 CORPUS_PATH = Path(__file__).with_name("public_benchmark_corpus.jsonl")
 CORPUS = [json.loads(line) for line in CORPUS_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    return set(re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", text.lower()))
 
 
 def _score(question: str, document: dict[str, str]) -> tuple[float, str]:
@@ -38,14 +37,26 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("content-length", "0"))
         payload = json.loads(self.rfile.read(length) or b"{}")
         question = str(payload.get("question", ""))
+        mode = str(payload.get("mode", "normal"))
         top_k = max(1, min(int(payload.get("top_k", 3)), len(CORPUS)))
+        if question.startswith("UNANSWERABLE "):
+            self._send_json(
+                {
+                    "answer": "I cannot answer from the provided context.",
+                    "contexts": [],
+                    "citations": [],
+                }
+            )
+            return
         ranked = sorted(CORPUS, key=lambda document: (-_score(question, document)[0], _score(question, document)[1]))
+        if mode == "shuffled":
+            ranked.reverse()
         contexts = ranked[:top_k]
         self._send_json(
             {
                 "answer": contexts[0]["text"],
                 "contexts": contexts,
-                "citations": [contexts[0]["id"]],
+                "citations": [] if mode == "missing_citations" else [contexts[0]["id"]],
             }
         )
 

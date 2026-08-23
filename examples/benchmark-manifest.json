@@ -30,10 +30,10 @@
     {
       "id": "public-http-en",
       "path": "dataset.public-http.en.jsonl",
-      "sha256": "1c059ddec8441026d7da42facf3bd30cba0daeab4630103972e553164350a72a",
-      "language": "en",
+      "sha256": "fa1ca93a2b1b067bf7d6544d41ca747c9eda0f3490ec7ad6f9f00430ea329ba9",
+      "language": "en,zh",
       "license": "CC0-1.0",
-      "purpose": "reproducible HTTP retrieval benchmark with citation gates"
+      "purpose": "60-sample synthetic HTTP benchmark covering Chinese, unanswerable, multihop, hard-negative, citation, and paraphrase cases"
     }
   ]
 }

@@ -9,6 +9,7 @@
     "name": {"type": "string"},
     "sample_count": {"type": "integer", "minimum": 0},
     "aggregate": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "results_jsonl": {"type": ["string", "null"]},
     "results": {"type": "array", "items": {"type": "object"}},
     "provenance": {
       "type": "object",

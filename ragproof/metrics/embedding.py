@@ -13,7 +13,7 @@ _LOCKS_GUARD = threading.Lock()
 @lru_cache(maxsize=4)
 def _load_model(model_name: str) -> Any:
     try:
-        from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+        from sentence_transformers import SentenceTransformer
     except ImportError as exc:
         raise RuntimeError("embedding similarity requires the optional 'sentence-transformers' package") from exc
     return SentenceTransformer(model_name)

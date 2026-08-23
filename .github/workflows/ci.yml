@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -28,20 +28,23 @@ jobs:
       - name: Enforce core coverage floors
         run: |
           coverage report --include='ragproof/runner.py' --fail-under=80
-          coverage report --include='ragproof/adapters/http.py' --fail-under=70
+          coverage report --include='ragproof/adapters/http.py' --fail-under=80
+          coverage report --include='ragproof/adapters/http_mapping.py' --fail-under=85
+          coverage report --include='ragproof/adapters/http_stream.py' --fail-under=85
           coverage report --include='ragproof/compare.py' --fail-under=85
-          coverage report --include='ragproof/dataset.py' --fail-under=65
-          coverage report --include='ragproof/report.py' --fail-under=60
-          coverage report --include='ragproof/cli.py' --fail-under=60
+          coverage report --include='ragproof/dataset.py' --fail-under=70
+          coverage report --include='ragproof/report.py' --fail-under=85
+          coverage report --include='ragproof/cli.py' --fail-under=64
+          coverage report --include='ragproof/metrics/embedding.py' --fail-under=80
 
       - name: Lint
         run: ruff check ragproof tests
 
       - name: Type check
-        run: mypy ragproof --ignore-missing-imports
+        run: mypy ragproof
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage-${{ matrix.python-version }}
           path: coverage.xml
@@ -60,29 +63,80 @@ jobs:
           ragproof trend runs/ci.json -o runs/ci-trend.json
 
       - name: Public HTTP benchmark gate
+        if: ${{ matrix.python-version == '3.13' }}
         run: |
           python examples/public_benchmark_server.py &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for attempt in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             curl --fail --silent http://127.0.0.1:8766/health && break
             sleep 1
           done
           curl --fail --silent http://127.0.0.1:8766/health
           ragproof run -c examples/public-http-benchmark.yaml -o runs/public-http-current.json
           ragproof compare \
-            --baseline examples/baselines/public-http-v0.4.1.json \
+            --baseline examples/baselines/public-http-p1.json \
             --current runs/public-http-current.json \
             --threshold "recall@3=1.0" \
             --threshold "mrr=1.0" \
             --threshold "citation_validity=1.0" \
             --max "error_rate=0.0"
+          ragproof run -c examples/public-http-negative-ranking.yaml -o runs/public-http-bad-ranking.json
+          if ragproof compare \
+            --baseline runs/public-http-current.json \
+            --current runs/public-http-bad-ranking.json \
+            --allow-provenance-mismatch \
+            --threshold "recall@3=0.9"; then
+            echo "shuffled ranking unexpectedly passed"
+            exit 1
+          fi
+          ragproof run -c examples/public-http-negative-citations.yaml -o runs/public-http-bad-citations.json
+          if ragproof compare \
+            --baseline runs/public-http-current.json \
+            --current runs/public-http-bad-citations.json \
+            --allow-provenance-mismatch \
+            --threshold "citation_validity=0.9"; then
+            echo "missing citations unexpectedly passed"
+            exit 1
+          fi
+
+  portability-smoke:
+    name: portability-smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install and smoke test
+        run: |
+          python -m pip install -e .
+          ragproof --version
+          ragproof run -c examples/mock.yaml -o runs/portability.json
+
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Validate Actions and YAML metadata
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          "$(go env GOPATH)/bin/actionlint"
+          python -m pip install PyYAML yamllint
+          yamllint -c .yamllint.yml .github
+          python scripts/validate_github_metadata.py
 
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Audit runtime dependencies

@@ -10,7 +10,6 @@ from .base import RAGAdapter, RAGResponse
 from .http import HTTPAdapter
 from .mock import MockAdapter
 
-
 _PRESETS: dict[str, dict[str, Any]] = {
     "langserve": {"endpoint": "/invoke", "method": "POST", "json_field": "input", "answer_path": "output"},
     "langchain": {"endpoint": "/invoke", "method": "POST", "json_field": "input", "answer_path": "output"},
@@ -41,16 +40,10 @@ def build_adapter(config: AdapterConfig, *, retries: int | None = None, retry_ba
         return MockAdapter(config)
     if config.type in {"http", *_PRESETS}:
         return HTTPAdapter(config)
-    try:
-        plugins = entry_points(group="ragproof.adapters")
-        for plugin in plugins:
-            if plugin.name == config.type:
-                return plugin.load()(config)
-    except TypeError:
-        plugins = entry_points().get("ragproof.adapters", [])  # type: ignore[attr-defined,arg-type]
-        for plugin in plugins:
-            if plugin.name == config.type:
-                return plugin.load()(config)
+    plugins = entry_points(group="ragproof.adapters")
+    for plugin in plugins:
+        if plugin.name == config.type:
+            return plugin.load()(config)
     raise ValueError(f"unknown adapter type: {config.type}")
 
 

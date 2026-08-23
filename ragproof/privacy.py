@@ -21,7 +21,18 @@ _ASSIGNMENT_RE = re.compile(
 
 def is_sensitive_key(key: object) -> bool:
     name = str(key).lower()
-    if any(safe in name for safe in ("token_count", "tokens_per_second", "tokenizer", "token_path", "max_prompt_chars", "max_prompt_tokens")):
+    if any(
+        safe in name
+        for safe in (
+            "token_count",
+            "tokens_per_second",
+            "tokenizer",
+            "token_path",
+            "lexical_token_f1",
+            "max_prompt_chars",
+            "max_prompt_tokens",
+        )
+    ):
         return False
     return bool(_SENSITIVE_KEY.search(name))
 

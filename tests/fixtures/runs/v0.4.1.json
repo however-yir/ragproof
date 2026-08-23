@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "name": "legacy-v0.4.1",
+  "aggregate": {"citation_validity": 1.0, "error_rate": 0.0},
+  "provenance": {
+    "dataset_sha256": "legacy-dataset",
+    "config_sha256": "legacy-config",
+    "selected_sample_ids_sha256": "legacy-samples"
+  },
+  "results": [{"id": "legacy-041", "metrics": {"citation_validity": 1.0}}]
+}

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
 from .metrics.registry import bounded_unit_interval, lower_is_better
 from .policy import GatePolicy
@@ -264,7 +264,7 @@ def compare_with_policy(
             passed = False
             reason = f"metric '{metric}' missing from baseline or current run"
         elif base_val == 0:
-            if lower_is_better(metric):
+            if lower_is_better(metric):  # noqa: SIM108 - explicit metric direction is clearer here
                 drop = 0.0 if cur_val <= 0 else 1.0
             else:
                 drop = 0.0 if cur_val >= 0 else 1.0

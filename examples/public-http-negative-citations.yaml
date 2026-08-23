@@ -1,4 +1,4 @@
-name: public-http-retrieval-benchmark
+name: public-http-negative-citations
 dataset: examples/dataset.public-http.en.jsonl
 
 adapter:
@@ -9,6 +9,7 @@ adapter:
   json_field: question
   extra_json:
     top_k: 3
+    mode: missing_citations
   answer_path: answer
   contexts_path: contexts
   context_id_path: id
@@ -20,11 +21,4 @@ judge:
 
 concurrency: 2
 top_k: 3
-required_fields: [answers]
 min_sample_count: 60
-min_coverage:
-  recall@3: 0.9
-  mrr: 0.9
-  citation_validity: 0.9
-  contexts: 0.9
-  citations: 0.9

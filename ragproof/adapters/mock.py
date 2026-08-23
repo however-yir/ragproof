@@ -28,3 +28,12 @@ class MockAdapter:
             citations=doc_ids[:2],
             latency_ms=float(h % 200 + 20),
         )
+
+    def close(self) -> None:
+        """Match the lifecycle contract of network-backed adapters."""
+
+    def __enter__(self) -> MockAdapter:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()

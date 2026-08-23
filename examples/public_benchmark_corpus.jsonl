@@ -1,8 +1,75 @@
-{"id":"policy-invoice-retention","text":"Customer invoices are retained for seven years."}
-{"id":"policy-production-access","text":"A service owner and a security reviewer must approve every production access request."}
-{"id":"policy-backups","text":"Encrypted production backups are retained for thirty days."}
-{"id":"policy-incidents","text":"Critical security incidents must be acknowledged within fifteen minutes."}
-{"id":"policy-mfa","text":"Multi-factor authentication is required for every administrator account."}
-{"id":"policy-deletion","text":"A verified customer deletion request must be completed within thirty days."}
-{"id":"policy-availability","text":"The production service availability target is 99.9 percent per calendar month."}
-{"id":"policy-priority-support","text":"Priority-one support incidents receive an initial response within one hour."}
+{"id": "doc-001", "text": "rpcode001 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-002", "text": "rpcode002 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-003", "text": "rpcode003 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-004", "text": "rpcode004 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-005", "text": "rpcode005 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-006", "text": "rpcode006 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-007", "text": "rpcode007 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-008", "text": "rpcode008 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-009", "text": "rpcode009 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-010", "text": "rpcode010 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-011", "text": "rpcode011 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-012", "text": "rpcode012 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-013", "text": "rpcode013 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-014", "text": "rpcode014 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-015", "text": "rpcode015 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-016", "text": "rpcode016 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-017", "text": "rpcode017 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-018", "text": "rpcode018 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-019", "text": "rpcode019 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-020", "text": "rpcode020 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-021", "text": "rpcode021 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-022", "text": "rpcode022 travel reimbursement policy requires approval tier 3."}
+{"id": "doc-023", "text": "rpcode023 travel reimbursement policy requires approval tier 4."}
+{"id": "doc-024", "text": "rpcode024 travel reimbursement policy requires approval tier 1."}
+{"id": "doc-025", "text": "rpcode025 travel reimbursement policy requires approval tier 2."}
+{"id": "doc-026", "text": "rpcode026 中文知识库规定数据保留期限为 26 天。"}
+{"id": "doc-027", "text": "rpcode027 中文知识库规定数据保留期限为 27 天。"}
+{"id": "doc-028", "text": "rpcode028 中文知识库规定数据保留期限为 28 天。"}
+{"id": "doc-029", "text": "rpcode029 中文知识库规定数据保留期限为 29 天。"}
+{"id": "doc-030", "text": "rpcode030 中文知识库规定数据保留期限为 30 天。"}
+{"id": "doc-031", "text": "rpcode031 中文知识库规定数据保留期限为 31 天。"}
+{"id": "doc-032", "text": "rpcode032 中文知识库规定数据保留期限为 32 天。"}
+{"id": "doc-033", "text": "rpcode033 中文知识库规定数据保留期限为 33 天。"}
+{"id": "doc-034", "text": "rpcode034 中文知识库规定数据保留期限为 34 天。"}
+{"id": "doc-035", "text": "rpcode035 中文知识库规定数据保留期限为 35 天。"}
+{"id": "doc-036", "text": "rpcode036 中文知识库规定数据保留期限为 36 天。"}
+{"id": "doc-037", "text": "rpcode037 中文知识库规定数据保留期限为 37 天。"}
+{"id": "doc-038", "text": "rpcode038 中文知识库规定数据保留期限为 38 天。"}
+{"id": "doc-039", "text": "rpcode039 中文知识库规定数据保留期限为 39 天。"}
+{"id": "doc-040", "text": "rpcode040 中文知识库规定数据保留期限为 40 天。"}
+{"id": "doc-046-a", "text": "rpcode046 retention phase is 46 days."}
+{"id": "doc-046-b", "text": "rpcode046 access phase requires role tier 2."}
+{"id": "doc-047-a", "text": "rpcode047 retention phase is 47 days."}
+{"id": "doc-047-b", "text": "rpcode047 access phase requires role tier 3."}
+{"id": "doc-048-a", "text": "rpcode048 retention phase is 48 days."}
+{"id": "doc-048-b", "text": "rpcode048 access phase requires role tier 1."}
+{"id": "doc-049-a", "text": "rpcode049 retention phase is 49 days."}
+{"id": "doc-049-b", "text": "rpcode049 access phase requires role tier 2."}
+{"id": "doc-050-a", "text": "rpcode050 retention phase is 50 days."}
+{"id": "doc-050-b", "text": "rpcode050 access phase requires role tier 3."}
+{"id": "doc-051", "text": "rpcode051 verification warranty requires signed evidence level 4."}
+{"id": "support-051-a", "text": "rpcode051 verification reference material."}
+{"id": "support-051-b", "text": "rpcode051 warranty reference material."}
+{"id": "negative-051", "text": "verification warranty marketing copy without signed evidence."}
+{"id": "doc-052", "text": "rpcode052 verification warranty requires signed evidence level 1."}
+{"id": "support-052-a", "text": "rpcode052 verification reference material."}
+{"id": "support-052-b", "text": "rpcode052 warranty reference material."}
+{"id": "negative-052", "text": "verification warranty marketing copy without signed evidence."}
+{"id": "doc-053", "text": "rpcode053 verification warranty requires signed evidence level 2."}
+{"id": "support-053-a", "text": "rpcode053 verification reference material."}
+{"id": "support-053-b", "text": "rpcode053 warranty reference material."}
+{"id": "negative-053", "text": "verification warranty marketing copy without signed evidence."}
+{"id": "doc-054", "text": "rpcode054 verification warranty requires signed evidence level 3."}
+{"id": "support-054-a", "text": "rpcode054 verification reference material."}
+{"id": "support-054-b", "text": "rpcode054 warranty reference material."}
+{"id": "negative-054", "text": "verification warranty marketing copy without signed evidence."}
+{"id": "doc-055", "text": "rpcode055 verification warranty requires signed evidence level 4."}
+{"id": "support-055-a", "text": "rpcode055 verification reference material."}
+{"id": "support-055-b", "text": "rpcode055 warranty reference material."}
+{"id": "negative-055", "text": "verification warranty marketing copy without signed evidence."}
+{"id": "doc-056", "text": "rpcode056 citation rule points to evidence record 56."}
+{"id": "doc-057", "text": "rpcode057 citation rule points to evidence record 57."}
+{"id": "doc-058", "text": "rpcode058 citation rule points to evidence record 58."}
+{"id": "doc-059", "text": "rpcode059 service restoration objective is 59 minutes."}
+{"id": "doc-060", "text": "rpcode060 service restoration objective is 60 minutes."}

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -50,7 +51,7 @@ class GatePolicy(BaseModel):
         return sorted(set(value))
 
     @classmethod
-    def load(cls, path: str | Path) -> "GatePolicy":
+    def load(cls, path: str | Path) -> GatePolicy:
         value = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         if not isinstance(value, dict):
             raise ValueError("threshold policy must be a mapping")
@@ -85,7 +86,7 @@ class GatePolicy(BaseModel):
         min_coverage: dict[str, float] | None = None,
         required_fields: Iterable[str] = (),
         allow_provenance_mismatch: bool = False,
-    ) -> "GatePolicy":
+    ) -> GatePolicy:
         value = self.model_dump()
         for name, additions in (
             ("thresholds", thresholds),

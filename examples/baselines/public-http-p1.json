@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "name": "public-http-retrieval-benchmark",
+  "sample_count": 60,
+  "aggregate": {
+    "recall@3": 1.0,
+    "mrr": 1.0,
+    "ndcg@3": 1.0,
+    "citation_validity": 1.0,
+    "citation_recall": 1.0,
+    "negative_hit_rate": 0.0,
+    "unanswerable_correctness": 1.0,
+    "error_rate": 0.0
+  },
+  "coverage": {
+    "fields": {
+      "answers": {"available": 60, "total": 60, "rate": 1.0},
+      "contexts": {"available": 55, "total": 60, "rate": 0.9166666666666666},
+      "citations": {"available": 55, "total": 60, "rate": 0.9166666666666666}
+    },
+    "metrics": {
+      "recall@3": {"available": 55, "total": 60, "rate": 0.9166666666666666},
+      "mrr": {"available": 55, "total": 60, "rate": 0.9166666666666666},
+      "citation_validity": {"available": 55, "total": 60, "rate": 0.9166666666666666}
+    }
+  },
+  "provenance": {
+    "schema_version": 2,
+    "dataset_sha256": "fa1ca93a2b1b067bf7d6544d41ca747c9eda0f3490ec7ad6f9f00430ea329ba9",
+    "config_sha256": "5f23d44c3a2c338568a752e58348761db3df7232a8fca4330b335e5c2253232d",
+    "selected_sample_ids_sha256": "ff438b0d120d706d00012d4a250f7f54187d1f7ea86cea578489b1df1d9c874d",
+    "adapter_type": "http"
+  },
+  "results": []
+}

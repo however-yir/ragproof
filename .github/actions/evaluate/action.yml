@@ -1,6 +1,12 @@
 name: ragproof evaluation
 description: Run a RAG evaluation, render its report, and enforce regression gates.
 outputs:
+  passed:
+    description: Whether evaluation and configured regression gates passed.
+    value: ${{ steps.summary.outputs.passed }}
+  aggregate-json:
+    description: Compact JSON object containing aggregate metrics.
+    value: ${{ steps.summary.outputs.aggregate-json }}
   run-json:
     description: Path to the run JSON artifact.
     value: ${{ inputs.output }}
@@ -73,7 +79,7 @@ runs:
   using: composite
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -167,9 +173,17 @@ runs:
         [[ "$RAGPROOF_ALLOW_PROVENANCE_MISMATCH" == "true" ]] && provenance_args+=(--allow-provenance-mismatch)
         policy_args=()
         [[ -n "$RAGPROOF_POLICY" ]] && policy_args+=(--policy "$RAGPROOF_POLICY")
-        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}" "${max_args[@]}" "${delta_args[@]}" "${relative_args[@]}" "${group_max_args[@]}" "${coverage_args[@]}" "${required_args[@]}" "${sample_args[@]}" "${provenance_args[@]}" "${policy_args[@]}"
+        ragproof compare \
+          --baseline "$RAGPROOF_BASELINE" \
+          --current "$RAGPROOF_CURRENT" \
+          "${threshold_args[@]}" "${group_args[@]}" "${max_args[@]}" \
+          "${delta_args[@]}" "${relative_args[@]}" "${group_max_args[@]}" \
+          "${coverage_args[@]}" "${required_args[@]}" "${sample_args[@]}" \
+          "${provenance_args[@]}" "${policy_args[@]}" \
+          --json > "$RAGPROOF_CURRENT.gates.json"
 
     - name: Render report and summary
+      id: summary
       if: ${{ always() }}
       shell: bash
       env:
@@ -205,19 +219,38 @@ runs:
           ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.html" "${report_args[@]}"
           ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.xml" "${report_args[@]}"
           ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.sarif" "${report_args[@]}"
-          python - "$RAGPROOF_OUTPUT" <<'PY'
+          python - "$RAGPROOF_OUTPUT" "$RAGPROOF_BASELINE" <<'PY'
         import json
         import os
         import sys
 
         report = json.load(open(sys.argv[1], encoding="utf-8"))
-        print(f"### ragproof\n\n- Samples: {report.get('sample_count', 0)}\n- Error rate: {report.get('aggregate', {}).get('error_rate', 0):.3f}", file=open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8"))
+        gates_path = f"{sys.argv[1]}.gates.json"
+        passed = True
+        if sys.argv[2]:
+            passed = False
+            if os.path.exists(gates_path):
+                gates = json.load(open(gates_path, encoding="utf-8"))
+                passed = bool(gates.get("passed"))
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            print(f"passed={str(passed).lower()}", file=output)
+            print("aggregate-json=" + json.dumps(report.get("aggregate", {}), separators=(",", ":")), file=output)
+        summary = (
+            "### ragproof\n\n"
+            f"- Samples: {report.get('sample_count', 0)}\n"
+            f"- Error rate: {report.get('aggregate', {}).get('error_rate', 0):.3f}"
+        )
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+            print(summary, file=output)
         PY
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo 'aggregate-json={}' >> "$GITHUB_OUTPUT"
         fi
 
     - name: Upload evaluation artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: ${{ inputs.artifact-name }}
         path: |
@@ -225,3 +258,4 @@ runs:
           ${{ inputs.output }}.html
           ${{ inputs.output }}.xml
           ${{ inputs.output }}.sarif
+          ${{ inputs.output }}.gates.json

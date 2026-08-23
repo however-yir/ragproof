@@ -5,6 +5,7 @@ from .answers import (
     context_utilization,
     exact_match,
     is_empty_answer,
+    lexical_token_f1,
     refusal_rate,
     semantic_similarity,
     token_count,
@@ -19,6 +20,7 @@ from .citation import (
     citation_span_overlap,
     citation_validity,
 )
+from .embedding import embedding_similarity
 from .retrieval import (
     average_precision_at_k,
     duplicate_rate,
@@ -26,10 +28,9 @@ from .retrieval import (
     mrr,
     ndcg_at_k,
     precision_at_k,
-    recall_at_k,
     rank_sensitivity,
+    recall_at_k,
 )
-from .embedding import embedding_similarity
 
 __all__ = [
     "recall_at_k",
@@ -48,6 +49,7 @@ __all__ = [
     "citation_span_overlap",
     "exact_match",
     "semantic_similarity",
+    "lexical_token_f1",
     "is_empty_answer",
     "refusal_rate",
     "context_utilization",

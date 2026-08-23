@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import csv
 import hashlib
-import re
+import json
+import math
 import random
+import re
+from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +33,7 @@ class Sample(BaseModel):
     ground_truth: str = ""
     ground_truths: list[str] = Field(default_factory=list)
     relevant_doc_ids: list[str] = Field(default_factory=list)
+    relevance_scores: dict[str, float] = Field(default_factory=dict)
     negative_doc_ids: list[str] = Field(default_factory=list)
     expected_citations: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
@@ -46,12 +50,19 @@ class Sample(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def normalize_references(self) -> "Sample":
+    def normalize_references(self) -> Sample:
         refs = list(dict.fromkeys([ref for ref in [self.ground_truth, *self.ground_truths] if ref]))
         self.ground_truths = refs
         if not self.ground_truth and refs:
             self.ground_truth = refs[0]
         self.tags = sorted(set(tag.strip() for tag in self.tags if tag.strip()))
+        if any(score < 0 for score in self.relevance_scores.values()):
+            raise ValueError("relevance_scores values must be non-negative")
+        for doc_id in self.relevant_doc_ids:
+            self.relevance_scores.setdefault(doc_id, 1.0)
+        self.relevant_doc_ids = list(
+            dict.fromkeys([*self.relevant_doc_ids, *(doc_id for doc_id, score in self.relevance_scores.items() if score > 0)])
+        )
         return self
 
 
@@ -92,6 +103,11 @@ def _normalize_tabular_record(record: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(parsed, dict):
             raise ValueError("metadata cell must contain a JSON object")
         normalized["metadata"] = parsed
+    if "relevance_scores" in normalized and isinstance(normalized["relevance_scores"], str):
+        parsed_scores = json.loads(normalized["relevance_scores"])
+        if not isinstance(parsed_scores, dict):
+            raise ValueError("relevance_scores cell must contain a JSON object")
+        normalized["relevance_scores"] = parsed_scores
     if "answerable" in normalized and isinstance(normalized["answerable"], str):
         value = normalized["answerable"].strip().lower()
         if value in {"true", "1", "yes"}:
@@ -128,7 +144,7 @@ def _records_from_path(path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("legacy .xls files are not supported; save as .xlsx or CSV")
     if suffix == ".xlsx":
         try:
-            import openpyxl  # type: ignore[import-not-found]
+            import openpyxl
         except ImportError as exc:
             raise ValueError("Excel import requires the optional 'openpyxl' package") from exc
         workbook = openpyxl.load_workbook(source, read_only=True, data_only=True)
@@ -140,7 +156,7 @@ def _records_from_path(path: str | Path) -> list[dict[str, Any]]:
         return [_normalize_tabular_record(dict(zip(headers, row, strict=False))) for row in rows[1:]]
     if suffix == ".parquet":
         try:
-            import pandas as pd  # type: ignore[import-not-found]
+            import pandas as pd
         except ImportError as exc:
             raise ValueError("Parquet import requires the optional 'pandas' package") from exc
         return pd.read_parquet(source).to_dict(orient="records")
@@ -167,6 +183,34 @@ def load(path: str | Path, *, reject_duplicates: bool = True) -> list[Sample]:
         seen_questions.add(sample.question)
         samples.append(sample)
     return samples
+
+
+def iter_load(path: str | Path, *, reject_duplicates: bool = True) -> Iterator[Sample]:
+    """Yield validated samples while reading JSONL incrementally."""
+    source = Path(path)
+    seen_ids: set[str] = set()
+    seen_questions: set[str] = set()
+    if source.suffix.lower() not in {".jsonl", ".ndjson"}:
+        yield from load(source, reject_duplicates=reject_duplicates)
+        return
+    with source.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                raw_record = json.loads(line)
+                if not isinstance(raw_record, dict):
+                    raise ValueError("each JSONL record must be an object")
+                sample = Sample.model_validate(raw_record)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ValueError(f"invalid dataset record at line {line_number}: {exc}") from exc
+            if reject_duplicates and sample.id in seen_ids:
+                raise ValueError(f"duplicate sample id at line {line_number}: {sample.id}")
+            if reject_duplicates and sample.question in seen_questions:
+                raise ValueError(f"duplicate question at line {line_number}: {sample.question!r}")
+            seen_ids.add(sample.id)
+            seen_questions.add(sample.question)
+            yield sample
 
 
 def validate(path: str | Path) -> list[str]:
@@ -197,41 +241,65 @@ def validate(path: str | Path) -> list[str]:
 
 def samples_count(path: str | Path) -> int:
     try:
-        return len(_records_from_path(path))
+        source = Path(path)
+        if source.suffix.lower() in {".jsonl", ".ndjson"}:
+            with source.open(encoding="utf-8") as handle:
+                return sum(1 for line in handle if line.strip())
+        return len(_records_from_path(source))
     except (OSError, ValueError, json.JSONDecodeError):
         return 0
 
 
 def manifest(path: str | Path) -> dict[str, Any]:
     """Return a stable dataset manifest suitable for provenance and review."""
-    samples = load(path)
-    tags = sorted({tag for sample in samples for tag in sample.tags})
-    difficulties = sorted({sample.difficulty for sample in samples})
+    samples = iter_load(path)
+    tags: set[str] = set()
+    difficulties: set[str] = set()
+    ids: list[str] = []
+    sample_count = 0
+    for sample in samples:
+        sample_count += 1
+        ids.append(sample.id)
+        tags.update(sample.tags)
+        difficulties.add(sample.difficulty)
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    ids_digest = hashlib.sha256("\n".join(sample.id for sample in samples).encode("utf-8")).hexdigest()
+    ids_digest = hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
     return {
         "path": str(Path(path)),
         "format": Path(path).suffix.lower().lstrip(".") or "unknown",
-        "sample_count": len(samples),
+        "sample_count": sample_count,
         "sha256": digest,
         "sample_ids_sha256": ids_digest,
-        "tags": tags,
-        "difficulties": difficulties,
+        "tags": sorted(tags),
+        "difficulties": sorted(difficulties),
     }
 
 
 def near_duplicate_questions(samples: list[Sample], threshold: float = 0.9) -> list[tuple[str, str, float]]:
-    """Find highly similar questions using a deterministic token Jaccard score."""
+    """Find highly similar questions with prefix-index candidate filtering."""
     if not 0 < threshold <= 1:
         raise ValueError("threshold must be between 0 and 1")
     tokens = [set(re.findall(r"[\w\u4e00-\u9fff]+", sample.question.lower())) for sample in samples]
+    frequencies = Counter(token for values in tokens for token in values)
+    ordered = [sorted(values, key=lambda token: (frequencies[token], token)) for values in tokens]
+    index_by_token: dict[str, list[int]] = {}
+    candidates: set[tuple[int, int]] = set()
+    for sample_index, values in enumerate(ordered):
+        prefix_length = max(1, len(values) - math.ceil(threshold * len(values)) + 1)
+        for token in values[:prefix_length]:
+            for other_index in index_by_token.get(token, []):
+                size_ratio = min(len(tokens[sample_index]), len(tokens[other_index])) / max(
+                    1, max(len(tokens[sample_index]), len(tokens[other_index]))
+                )
+                if size_ratio >= threshold:
+                    candidates.add((sample_index, other_index))
+            index_by_token.setdefault(token, []).append(sample_index)
     duplicates: list[tuple[str, str, float]] = []
-    for index, left in enumerate(tokens):
-        for other_index in range(index):
-            right = tokens[other_index]
-            score = len(left & right) / len(left | right) if left | right else 1.0
-            if score >= threshold:
-                duplicates.append((samples[index].id, samples[other_index].id, round(score, 4)))
+    for sample_index, other_index in sorted(candidates):
+        left, right = tokens[sample_index], tokens[other_index]
+        score = len(left & right) / len(left | right) if left | right else 1.0
+        if score >= threshold:
+            duplicates.append((samples[sample_index].id, samples[other_index].id, round(score, 4)))
     return duplicates
 
 
@@ -250,7 +318,7 @@ def stratified_sample(samples: list[Sample], limit: int, *, dimension: str = "ta
             keys = [str(value if value is not None else "missing")]
         for key in keys:
             buckets.setdefault(key, []).append(sample)
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 - reproducible sampling, not security
     for bucket in buckets.values():
         rng.shuffle(bucket)
     selected: list[Sample] = []

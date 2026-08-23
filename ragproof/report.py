@@ -5,8 +5,8 @@ from __future__ import annotations
 import csv
 import json
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -171,7 +171,12 @@ def render(
     if fmt == "sarif":
         _render_sarif(run, out)
         return out
-    env = Environment(loader=FileSystemLoader(_TEMPLATES), autoescape=(fmt == "html"))
+    env = Environment(
+        loader=FileSystemLoader(_TEMPLATES),
+        autoescape=lambda template_name: bool(  # noqa: S701 - only HTML templates are escaped
+            template_name and template_name.endswith(".html.j2")
+        ),
+    )
     template = env.get_template(f"report.{fmt}.j2")
     out.write_text(template.render(run=run), encoding="utf-8")
     return out

@@ -63,6 +63,7 @@ class AdapterConfig(BaseModel):
     max_answer_chars: int = 1_000_000
     max_contexts: int = 1_000
     max_context_chars: int = 1_000_000
+    async_max_concurrency: int = 20
     # Request mapping.
     query_param: str | None = None
     json_field: str | None = None
@@ -113,7 +114,13 @@ class AdapterConfig(BaseModel):
             raise ValueError("retry timing values must be 0 or greater")
         return value
 
-    @field_validator("max_response_bytes", "max_answer_chars", "max_contexts", "max_context_chars")
+    @field_validator(
+        "max_response_bytes",
+        "max_answer_chars",
+        "max_contexts",
+        "max_context_chars",
+        "async_max_concurrency",
+    )
     @classmethod
     def positive_limits(cls, value: int) -> int:
         if value < 1:
@@ -185,6 +192,24 @@ class JudgeConfig(BaseModel):
         return value
 
 
+class IdNormalizationConfig(BaseModel):
+    """How retrieval, gold, and citation identifiers are made comparable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strip: bool = True
+    unicode_form: str = "NFC"
+    lowercase: bool = False
+    strip_prefixes: list[str] = Field(default_factory=list)
+
+    @field_validator("unicode_form")
+    @classmethod
+    def supported_unicode_form(cls, value: str) -> str:
+        normalized = value.upper().strip()
+        if normalized not in {"NFC", "NFD", "NFKC", "NFKD"}:
+            raise ValueError("unicode_form must be NFC, NFD, NFKC, or NFKD")
+        return normalized
+
 class RunConfig(BaseModel):
     """Top-level run configuration loaded from YAML."""
 
@@ -214,6 +239,13 @@ class RunConfig(BaseModel):
     stratify_by: str | None = None
     deduplicate_questions: bool = True
     redact_sensitive: bool = True
+    id_normalization: IdNormalizationConfig = Field(default_factory=IdNormalizationConfig)
+    refusal_language: str = "auto"
+    refusal_patterns: list[str] = Field(default_factory=list)
+    refusal_exceptions: list[str] = Field(default_factory=list)
+    batch_size: int = 100
+    stream_results: bool = False
+    result_sink: str | None = None
     embedding_model: str | None = None
     tokenizer: str = "heuristic"
     # These values are copied into run metadata when supplied by CI or a caller.
@@ -249,8 +281,30 @@ class RunConfig(BaseModel):
             raise ValueError("all top_ks values must be at least 1")
         return sorted(set(value))
 
+    @field_validator("batch_size")
     @classmethod
-    def load(cls, path: str | Path) -> "RunConfig":
+    def positive_batch_size(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("batch_size must be at least 1")
+        return value
+
+    @field_validator("refusal_language")
+    @classmethod
+    def supported_refusal_language(cls, value: str) -> str:
+        language = value.lower().strip()
+        if language not in {"auto", "en", "zh"}:
+            raise ValueError("refusal_language must be auto, en, or zh")
+        return language
+
+    @field_validator("refusal_patterns", "refusal_exceptions")
+    @classmethod
+    def valid_refusal_regexes(cls, value: list[str]) -> list[str]:
+        for pattern in value:
+            re.compile(pattern)
+        return value
+
+    @classmethod
+    def load(cls, path: str | Path) -> RunConfig:
         config_path = Path(path).resolve()
         expanded, missing_env_vars = _expand_env(config_path.read_text(encoding="utf-8"))
         raw = yaml.safe_load(expanded) or {}
@@ -294,6 +348,13 @@ class RunConfig(BaseModel):
             "stratify_by": self.stratify_by,
             "deduplicate_questions": self.deduplicate_questions,
             "redact_sensitive": self.redact_sensitive,
+            "id_normalization": self.id_normalization.model_dump(),
+            "refusal_language": self.refusal_language,
+            "refusal_patterns": self.refusal_patterns,
+            "refusal_exceptions": self.refusal_exceptions,
+            "batch_size": self.batch_size,
+            "stream_results": self.stream_results,
+            "result_sink": Path(self.result_sink).name if self.result_sink else None,
             "tokenizer": self.tokenizer,
             "embedding_model": self.embedding_model,
             "required_metrics": sorted(set(self.required_metrics)),
@@ -315,6 +376,7 @@ class RunConfig(BaseModel):
                 "max_answer_chars",
                 "max_contexts",
                 "max_context_chars",
+                "async_max_concurrency",
             },
             exclude_none=True,
         )

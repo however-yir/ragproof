@@ -6,16 +6,21 @@ import datetime
 import json
 import os
 import random
+import shutil
 import subprocess
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
 from . import __version__
 from . import dataset as ds
 from .adapters import build_adapter
-from .config import RunConfig
+from .config import IdNormalizationConfig, RunConfig
+from .io import atomic_text_writer, atomic_write_text
 from .metrics import (
     average_precision_at_k,
     citation_coverage,
@@ -32,20 +37,20 @@ from .metrics import (
     exact_match,
     hit_rate,
     is_empty_answer,
+    lexical_token_f1,
     mrr,
     ndcg_at_k,
     precision_at_k,
-    recall_at_k,
     rank_sensitivity,
+    recall_at_k,
     refusal_rate,
-    semantic_similarity,
     token_count,
     tokens_per_second,
     unanswerable_correctness,
 )
-from .metrics.judge import Judge, JudgeResult
 from .metrics.embedding import embedding_similarity
-from .io import atomic_write_text
+from .metrics.judge import Judge, JudgeResult
+from .normalization import normalize_ids, normalize_relevance
 from .privacy import redact_nested
 from .provenance import sha256_file, sha256_json, sha256_values
 from .schema import CURRENT_RUN_SCHEMA_VERSION
@@ -54,9 +59,12 @@ from .schema import CURRENT_RUN_SCHEMA_VERSION
 def _git_sha() -> str | None:
     if os.environ.get("GITHUB_SHA"):
         return os.environ["GITHUB_SHA"]
+    git = shutil.which("git")
+    if not git:
+        return None
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        return subprocess.run(  # noqa: S603 - resolved git binary with fixed arguments
+            [git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
         ).stdout.strip() or None
     except (OSError, subprocess.CalledProcessError):
         return None
@@ -84,37 +92,60 @@ def _evaluate_sample(
     *,
     tokenizer: str = "heuristic",
     embedding_model: str | None = None,
+    id_normalization: IdNormalizationConfig | None = None,
+    refusal_patterns: list[str] | None = None,
+    refusal_exceptions: list[str] | None = None,
+    refusal_language: str = "auto",
 ) -> dict[str, Any]:
     response = adapter.ask(sample.question)
+    normalization = id_normalization or IdNormalizationConfig()
+    context_ids = normalize_ids(response.context_ids, normalization)
+    citations = normalize_ids(response.citations, normalization)
+    qrels = normalize_relevance(sample.relevance_scores, normalization)
+    expected_citations = normalize_ids(sample.expected_citations, normalization)
     metrics: dict[str, float | None] = {}
     judge_details: dict[str, Any] = {}
     if response.error is None:
         for k in top_ks:
-            metrics[f"recall@{k}"] = recall_at_k(response.context_ids, sample.relevant_doc_ids, k)
-            metrics[f"precision@{k}"] = precision_at_k(response.context_ids, sample.relevant_doc_ids, k)
-            metrics[f"ndcg@{k}"] = ndcg_at_k(response.context_ids, sample.relevant_doc_ids, k)
-            metrics[f"map@{k}"] = average_precision_at_k(response.context_ids, sample.relevant_doc_ids, k)
-            metrics[f"hit_rate@{k}"] = hit_rate(response.context_ids, sample.relevant_doc_ids, k)
-            metrics[f"rank_sensitivity@{k}"] = rank_sensitivity(response.context_ids, sample.relevant_doc_ids, k)
-        metrics["mrr"] = mrr(response.context_ids, sample.relevant_doc_ids)
-        metrics["duplicate_rate"] = duplicate_rate(response.context_ids)
+            metrics[f"recall@{k}"] = recall_at_k(context_ids, qrels, k)
+            metrics[f"precision@{k}"] = precision_at_k(context_ids, qrels, k)
+            metrics[f"ndcg@{k}"] = ndcg_at_k(context_ids, qrels, k)
+            metrics[f"map@{k}"] = average_precision_at_k(context_ids, qrels, k)
+            metrics[f"hit_rate@{k}"] = hit_rate(context_ids, qrels, k)
+            metrics[f"rank_sensitivity@{k}"] = rank_sensitivity(context_ids, qrels, k)
+        metrics["mrr"] = mrr(context_ids, qrels)
+        metrics["duplicate_rate"] = duplicate_rate(context_ids)
         metrics["citation_coverage"] = citation_coverage(response.citations, response.contexts)
-        metrics["citation_validity"] = citation_validity(response.citations, response.context_ids)
-        metrics["citation_precision"] = citation_precision(response.citations, response.context_ids)
-        metrics["citation_recall"] = citation_recall(response.citations, sample.expected_citations)
+        metrics["citation_validity"] = citation_validity(citations, context_ids)
+        metrics["citation_precision"] = citation_precision(citations, context_ids)
+        metrics["citation_recall"] = citation_recall(citations, expected_citations)
         metrics["citation_span_overlap"] = citation_span_overlap(
             response.answer,
-            response.citations,
+            citations,
             response.contexts,
-            response.context_ids,
+            context_ids,
         )
         metrics["exact_match"] = exact_match(response.answer, sample.ground_truths)
-        metrics["semantic_similarity"] = semantic_similarity(response.answer, sample.ground_truths)
+        lexical_score = lexical_token_f1(response.answer, sample.ground_truths)
+        metrics["lexical_token_f1"] = lexical_score
+        metrics["semantic_similarity"] = lexical_score
         if embedding_model:
             metrics["embedding_similarity"] = embedding_similarity(response.answer, sample.ground_truths, embedding_model)
         metrics["empty_answer_rate"] = is_empty_answer(response.answer)
-        metrics["refusal_rate"] = refusal_rate(response.answer, sample.answerable)
-        metrics["unanswerable_correctness"] = unanswerable_correctness(response.answer, sample.answerable)
+        metrics["refusal_rate"] = refusal_rate(
+            response.answer,
+            sample.answerable,
+            patterns=refusal_patterns,
+            exceptions=refusal_exceptions,
+            language=refusal_language,
+        )
+        metrics["unanswerable_correctness"] = unanswerable_correctness(
+            response.answer,
+            sample.answerable,
+            patterns=refusal_patterns,
+            exceptions=refusal_exceptions,
+            language=refusal_language,
+        )
         metrics["context_utilization"] = context_utilization(response.answer, response.contexts)
         metrics["context_redundancy"] = context_redundancy(response.contexts)
         metrics["context_diversity"] = context_diversity(response.contexts)
@@ -122,8 +153,8 @@ def _evaluate_sample(
         metrics["output_token_count"] = float(token_count(response.answer, tokenizer=tokenizer))
         metrics["tokens_per_second"] = tokens_per_second(response.answer, response.latency_ms, tokenizer=tokenizer)
         if sample.negative_doc_ids:
-            negative = set(sample.negative_doc_ids)
-            metrics["negative_hit_rate"] = 1.0 if negative.intersection(response.context_ids) else 0.0
+            negative = set(normalize_ids(sample.negative_doc_ids, normalization))
+            metrics["negative_hit_rate"] = 1.0 if negative.intersection(context_ids) else 0.0
         if judge:
             faithfulness = judge.evaluate_faithfulness(response.answer, response.contexts)
             groundedness = judge.evaluate_groundedness(response.answer, response.contexts)
@@ -148,10 +179,11 @@ def _evaluate_sample(
         "question": sample.question,
         "answer": response.answer,
         "contexts": response.contexts,
-        "context_ids": response.context_ids,
-        "retrieved_doc_ids": response.context_ids,
-        "citations": response.citations,
-        "expected_citations": sample.expected_citations,
+        "context_ids": context_ids,
+        "retrieved_doc_ids": context_ids,
+        "citations": citations,
+        "expected_citations": expected_citations,
+        "relevance_scores": qrels,
         "tags": sample.tags,
         "difficulty": sample.difficulty,
         "answerable": sample.answerable,
@@ -166,7 +198,7 @@ def _evaluate_sample(
         "error_type": response.error_type,
         "metrics": metrics,
         "judge": judge_details,
-        "citation_matches": citation_matches(response.citations, response.context_ids),
+        "citation_matches": citation_matches(citations, context_ids),
     }
 
 
@@ -176,57 +208,6 @@ def _percentile(values: list[float], percentile: float) -> float | None:
     ordered = sorted(values)
     index = min(len(ordered) - 1, max(0, round((percentile / 100) * (len(ordered) - 1))))
     return ordered[index]
-
-
-def _aggregate(results: list[dict[str, Any]]) -> dict[str, float]:
-    sums: dict[str, list[float]] = {}
-    for result in results:
-        for name, value in result["metrics"].items():
-            if value is not None:
-                sums.setdefault(name, []).append(float(value))
-    aggregate = {name: sum(values) / len(values) for name, values in sums.items()}
-    latencies = [float(r["latency_ms"]) for r in results if r["error"] is None]
-    if latencies:
-        aggregate["avg_latency_ms"] = sum(latencies) / len(latencies)
-        aggregate["p50_latency_ms"] = _percentile(latencies, 50) or 0.0
-        aggregate["p95_latency_ms"] = _percentile(latencies, 95) or 0.0
-    first_token_latencies = [
-        float(r["first_token_latency_ms"])
-        for r in results
-        if r.get("first_token_latency_ms") is not None and r["error"] is None
-    ]
-    if first_token_latencies:
-        aggregate["avg_first_token_latency_ms"] = sum(first_token_latencies) / len(first_token_latencies)
-        aggregate["p95_first_token_latency_ms"] = _percentile(first_token_latencies, 95) or 0.0
-    successful = [r for r in results if r["error"] is None]
-    if successful:
-        aggregate["stream_rate"] = sum(1 for r in successful if r.get("streamed")) / len(successful)
-    aggregate["error_rate"] = sum(1 for r in results if r["error"]) / len(results) if results else 0.0
-    return aggregate
-
-
-def _coverage(results: list[dict[str, Any]]) -> dict[str, Any]:
-    total = len(results)
-
-    def field_rate(predicate) -> dict[str, float | int]:
-        available = sum(1 for result in results if predicate(result))
-        return {"available": available, "total": total, "rate": available / total if total else 0.0}
-
-    metric_names = sorted({name for result in results for name in result.get("metrics", {})})
-    metric_coverage = {
-        name: field_rate(lambda result, metric=name: result.get("metrics", {}).get(metric) is not None)
-        for name in metric_names
-    }
-    return {
-        "fields": {
-            "successful_requests": field_rate(lambda result: result.get("error") is None),
-            "answers": field_rate(lambda result: bool(str(result.get("answer", "")).strip())),
-            "contexts": field_rate(lambda result: bool(result.get("contexts"))),
-            "context_ids": field_rate(lambda result: bool(result.get("context_ids"))),
-            "citations": field_rate(lambda result: bool(result.get("citations"))),
-        },
-        "metrics": metric_coverage,
-    }
 
 
 def _dimension_values(result: dict[str, Any], dimension: str) -> list[str]:
@@ -241,42 +222,161 @@ def _dimension_values(result: dict[str, Any], dimension: str) -> list[str]:
     return [str(result.get(dimension, "missing"))]
 
 
-def _group_aggregates(results: list[dict[str, Any]], dimensions: list[str]) -> dict[str, dict[str, dict[str, float]]]:
-    groups: dict[str, dict[str, list[dict[str, Any]]]] = {dimension: {} for dimension in dimensions}
-    for result in results:
-        for dimension in dimensions:
+class _OnlineAggregate:
+    """Retain only aggregate state while sample details stream to JSONL."""
+
+    def __init__(self, dimensions: list[str] | None = None):
+        self.total = 0
+        self.successful = 0
+        self.streamed = 0
+        self.metric_sums: dict[str, float] = {}
+        self.metric_counts: dict[str, int] = {}
+        self.metric_names: set[str] = set()
+        self.latencies: list[float] = []
+        self.first_token_latencies: list[float] = []
+        self.field_counts = {
+            "successful_requests": 0,
+            "answers": 0,
+            "contexts": 0,
+            "context_ids": 0,
+            "citations": 0,
+        }
+        self.dimensions = dimensions or []
+        self.groups: dict[str, dict[str, _OnlineAggregate]] = {
+            dimension: {} for dimension in self.dimensions
+        }
+
+    def add(self, result: dict[str, Any]) -> None:
+        self.total += 1
+        successful = result.get("error") is None
+        if successful:
+            self.successful += 1
+            self.field_counts["successful_requests"] += 1
+            self.latencies.append(float(result.get("latency_ms", 0.0)))
+            if result.get("first_token_latency_ms") is not None:
+                self.first_token_latencies.append(float(result["first_token_latency_ms"]))
+            if result.get("streamed"):
+                self.streamed += 1
+        for field in ("answers", "contexts", "context_ids", "citations"):
+            source = "answer" if field == "answers" else field
+            if result.get(source):
+                self.field_counts[field] += 1
+        for name, value in result.get("metrics", {}).items():
+            self.metric_names.add(name)
+            if value is not None:
+                self.metric_sums[name] = self.metric_sums.get(name, 0.0) + float(value)
+                self.metric_counts[name] = self.metric_counts.get(name, 0) + 1
+        for dimension in self.dimensions:
             for value in _dimension_values(result, dimension):
-                groups[dimension].setdefault(value, []).append(result)  # type: ignore[arg-type]
-    return {
-        dimension: {name: _aggregate(items) for name, items in values.items()}
-        for dimension, values in groups.items()
-    }
+                self.groups[dimension].setdefault(value, _OnlineAggregate()).add(result)
+
+    def aggregate(self) -> dict[str, float]:
+        aggregate = {
+            name: self.metric_sums[name] / self.metric_counts[name]
+            for name in sorted(self.metric_sums)
+        }
+        if self.latencies:
+            aggregate["avg_latency_ms"] = sum(self.latencies) / len(self.latencies)
+            aggregate["p50_latency_ms"] = _percentile(self.latencies, 50) or 0.0
+            aggregate["p95_latency_ms"] = _percentile(self.latencies, 95) or 0.0
+        if self.first_token_latencies:
+            aggregate["avg_first_token_latency_ms"] = sum(self.first_token_latencies) / len(
+                self.first_token_latencies
+            )
+            aggregate["p95_first_token_latency_ms"] = (
+                _percentile(self.first_token_latencies, 95) or 0.0
+            )
+        if self.successful:
+            aggregate["stream_rate"] = self.streamed / self.successful
+        aggregate["error_rate"] = (
+            (self.total - self.successful) / self.total if self.total else 0.0
+        )
+        return aggregate
+
+    def coverage(self) -> dict[str, Any]:
+        def entry(available: int) -> dict[str, float | int]:
+            return {
+                "available": available,
+                "total": self.total,
+                "rate": available / self.total if self.total else 0.0,
+            }
+
+        return {
+            "fields": {name: entry(count) for name, count in self.field_counts.items()},
+            "metrics": {
+                name: entry(self.metric_counts.get(name, 0)) for name in sorted(self.metric_names)
+            },
+        }
+
+    def group_aggregates(self) -> dict[str, dict[str, dict[str, float]]]:
+        return {
+            dimension: {
+                value: aggregate.aggregate() for value, aggregate in sorted(groups.items())
+            }
+            for dimension, groups in self.groups.items()
+        }
+
+
+def _iter_selected_samples(config: RunConfig) -> Iterator[ds.Sample]:
+    """Stream simple filters; materialize only when shuffling or stratifying is requested."""
+    if config.stratify_by or config.seed is not None:
+        samples = ds.filter_samples(
+            ds.load(config.dataset, reject_duplicates=config.deduplicate_questions),
+            limit=config.sample_limit,
+            include_tags=set(config.include_tags),
+            exclude_tags=set(config.exclude_tags),
+            stratify_by=config.stratify_by,
+            seed=config.seed,
+        )
+        if config.seed is not None:
+            random.Random(config.seed).shuffle(samples)  # noqa: S311 - reproducible evaluation ordering
+        yield from samples
+        return
+
+    emitted = 0
+    include_tags = set(config.include_tags)
+    exclude_tags = set(config.exclude_tags)
+    for sample in ds.iter_load(
+        config.dataset,
+        reject_duplicates=config.deduplicate_questions,
+    ):
+        if include_tags and not include_tags.intersection(sample.tags):
+            continue
+        if exclude_tags.intersection(sample.tags):
+            continue
+        yield sample
+        emitted += 1
+        if config.sample_limit is not None and emitted >= config.sample_limit:
+            return
+
+
+def _batches(samples: Iterator[ds.Sample], size: int) -> Iterator[list[ds.Sample]]:
+    while batch := list(islice(samples, size)):
+        yield batch
 
 
 def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
     started = time.perf_counter()
-    samples = ds.load(config.dataset, reject_duplicates=config.deduplicate_questions)
-    samples = ds.filter_samples(
-        samples,
-        limit=config.sample_limit,
-        include_tags=set(config.include_tags),
-        exclude_tags=set(config.exclude_tags),
-        stratify_by=config.stratify_by,
-        seed=config.seed,
-    )
-    if config.seed is not None:
-        samples = list(samples)
-        random.Random(config.seed).shuffle(samples)
-    if not samples:
-        raise ValueError("no samples selected; check dataset filters and sample_limit")
+    out = Path(output)
+    use_result_sink = config.stream_results or config.result_sink is not None
+    sink_path: Path | None = None
+    if use_result_sink:
+        sink_path = Path(config.result_sink) if config.result_sink else out.with_suffix(".results.jsonl")
+        if not sink_path.is_absolute():
+            sink_path = out.parent / sink_path
     adapter = build_adapter(config.adapter, retries=config.retries, retry_backoff=config.retry_backoff)
     judge = Judge(config.judge) if config.judge.enabled else None
     top_ks = config.effective_top_ks()
+    accumulator = _OnlineAggregate(config.group_by)
+    results: list[dict[str, Any]] = []
+    selected_ids: list[str] = []
+    total_cost = 0.0
+    sink_context = atomic_text_writer(sink_path) if sink_path else nullcontext(None)
 
     try:
-        with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
-            results = list(
-                pool.map(
+        with sink_context as sink, ThreadPoolExecutor(max_workers=config.concurrency) as pool:
+            for batch in _batches(_iter_selected_samples(config), config.batch_size):
+                evaluated = pool.map(
                     lambda sample: _evaluate_sample(
                         sample,
                         adapter,
@@ -284,10 +384,28 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
                         top_ks,
                         tokenizer=config.tokenizer,
                         embedding_model=config.embedding_model,
+                        id_normalization=config.id_normalization,
+                        refusal_patterns=config.refusal_patterns,
+                        refusal_exceptions=config.refusal_exceptions,
+                        refusal_language=config.refusal_language,
                     ),
-                    samples,
+                    batch,
                 )
-            )
+                for sample, result in zip(batch, evaluated, strict=True):
+                    selected_ids.append(sample.id)
+                    accumulator.add(result)
+                    total_cost += sum(
+                        detail.get("estimated_cost", 0.0)
+                        for detail in result.get("judge", {}).values()
+                        if detail
+                    )
+                    if sink is not None:
+                        persisted = redact_nested(result) if config.redact_sensitive else result
+                        sink.write(json.dumps(persisted, ensure_ascii=False) + "\n")
+                    else:
+                        results.append(result)
+            if not accumulator.total:
+                raise ValueError("no samples selected; check dataset filters and sample_limit")
     finally:
         close_adapter = getattr(adapter, "close", None)
         if callable(close_adapter):
@@ -295,13 +413,7 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         if judge:
             judge.close()
 
-    total_cost = sum(
-        detail.get("estimated_cost", 0.0)
-        for result in results
-        for detail in result.get("judge", {}).values()
-        if detail
-    )
-    coverage = _coverage(results)
+    coverage = accumulator.coverage()
     config_summary = config.summary()
     dataset_label = str(config_summary["dataset"])
     dataset_manifest = ds.manifest(config.dataset)
@@ -315,14 +427,14 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         "git_sha": config.git_sha or _git_sha(),
         "dataset": dataset_label,
         "dataset_sample_count": ds.samples_count(config.dataset),
-        "sample_count": len(samples),
+        "sample_count": accumulator.total,
         "provenance": {
             "schema_version": 2,
             "dataset_sha256": sha256_file(config.dataset),
             "config_sha256": sha256_json(config.fingerprint_summary()),
             "config_fingerprint_version": 2,
             "legacy_config_sha256": sha256_json(config.legacy_fingerprint_summary()),
-            "selected_sample_ids_sha256": sha256_values(sample.id for sample in samples),
+            "selected_sample_ids_sha256": sha256_values(selected_ids),
             "dataset_manifest": dataset_manifest,
             "judge_prompt_version": config.judge.prompt_version,
             "judge_prompt_sha256": judge.prompt_fingerprint if judge else None,
@@ -331,19 +443,22 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         },
         "top_ks": top_ks,
         "config_summary": config_summary,
-        "aggregate": _aggregate(results),
-        "groups": _group_aggregates(results, config.group_by),
+        "aggregate": accumulator.aggregate(),
+        "groups": accumulator.group_aggregates(),
         "coverage": coverage,
         "cost": {"estimated_total": total_cost},
         "judge_status": {
             "failures": judge.failures if judge else 0,
             "circuit_open": judge.circuit_open if judge else False,
         },
+        "deprecations": {
+            "semantic_similarity": "Use lexical_token_f1; semantic_similarity remains a compatibility alias for one release cycle."
+        },
+        "results_jsonl": sink_path.name if sink_path else None,
         "results": results,
     }
     if config.redact_sensitive:
         report = redact_nested(report)
-    out = Path(output)
     atomic_write_text(out, json.dumps(report, ensure_ascii=False, indent=2))
     required = sorted(set(config.required_metrics))
     missing = [
@@ -357,8 +472,10 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
             + ", ".join(missing)
             + f"; inspect coverage in {out}"
         )
-    if config.min_sample_count is not None and len(samples) < config.min_sample_count:
-        raise ValueError(f"selected sample count {len(samples)} is below min_sample_count {config.min_sample_count}")
+    if config.min_sample_count is not None and accumulator.total < config.min_sample_count:
+        raise ValueError(
+            f"selected sample count {accumulator.total} is below min_sample_count {config.min_sample_count}"
+        )
     required_fields = sorted(set(config.required_fields))
     missing_fields = [
         field

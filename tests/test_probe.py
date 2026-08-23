@@ -1,8 +1,8 @@
 import json
 
 from ragproof.adapters.base import RAGResponse
-from ragproof.probe import inspect_response, render_config
 from ragproof.config import AdapterConfig
+from ragproof.probe import inspect_response, render_config
 
 
 def test_probe_finds_nested_paths_and_relative_ids():

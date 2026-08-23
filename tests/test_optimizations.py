@@ -1,9 +1,9 @@
 import json
 
 import pytest
-
 from click.testing import CliRunner
 
+from ragproof.adapters import build_adapter
 from ragproof.cli import cli
 from ragproof.compare import (
     compare,
@@ -16,15 +16,21 @@ from ragproof.compare import (
     recommend_max_thresholds,
     recommend_thresholds,
 )
+from ragproof.config import AdapterConfig
 from ragproof.dataset import Sample, manifest, near_duplicate_questions, redact_text, stratified_sample, validate
-from ragproof.metrics.answers import claim_support, context_diversity, context_redundancy, token_count, tokens_per_second, unanswerable_correctness
+from ragproof.metrics.answers import (
+    claim_support,
+    context_diversity,
+    context_redundancy,
+    token_count,
+    tokens_per_second,
+    unanswerable_correctness,
+)
 from ragproof.metrics.citation import citation_span_overlap
 from ragproof.metrics.retrieval import rank_sensitivity
 from ragproof.report import render
 from ragproof.runner import _git_sha
 from ragproof.trend import bootstrap_interval, find_first_regression, summarize_runs
-from ragproof.adapters import build_adapter
-from ragproof.config import AdapterConfig
 
 
 def _run(path, *, value=0.5, sample_count=2):

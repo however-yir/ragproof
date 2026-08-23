@@ -1,0 +1,35 @@
+name: Action pin review
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 1 * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  open-review-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Open the monthly manual review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          month="$(date -u +%Y-%m)"
+          title="Review pinned GitHub Actions - $month"
+          if gh issue list --state all --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            exit 0
+          fi
+          {
+            echo "Review every pinned Action SHA against its documented major-version tag."
+            echo
+            echo "Do not open automated dependency pull requests; update SHAs manually after changelog review."
+            echo
+            echo '```text'
+            grep -RhoE 'uses: [^ ]+@[0-9a-f]{40}' .github | sort -u
+            echo '```'
+          } > "$RUNNER_TEMP/action-pin-review.md"
+          gh issue create --title "$title" --body-file "$RUNNER_TEMP/action-pin-review.md"

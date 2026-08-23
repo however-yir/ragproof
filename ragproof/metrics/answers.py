@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import re
+import warnings
 from collections import Counter
 
 _TOKEN_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
-_REFUSAL_PATTERNS = (
-    "i don't know",
-    "i do not know",
-    "cannot answer",
-    "can't answer",
-    "no information",
-    "无法回答",
-    "不知道",
-    "没有相关信息",
-    "无法确定",
-)
+_REFUSAL_PATTERNS = {
+    "en": (
+        r"\bi (?:do not|don't) know\b",
+        r"\b(?:cannot|can't) answer\b",
+        r"\bno (?:relevant )?information\b",
+        r"\binsufficient (?:context|information)\b",
+    ),
+    "zh": (r"无法回答", r"不知道", r"没有相关信息", r"无法确定", r"信息不足"),
+}
 
 
 def normalize_answer(text: str) -> str:
@@ -30,8 +29,8 @@ def exact_match(answer: str, references: list[str]) -> float | None:
     return 1.0 if any(normalized == normalize_answer(reference) for reference in references) else 0.0
 
 
-def semantic_similarity(answer: str, references: list[str]) -> float | None:
-    """A dependency-free token F1 proxy; use an embedding metric for deep semantics."""
+def lexical_token_f1(answer: str, references: list[str]) -> float | None:
+    """Dependency-free token F1; this intentionally does not claim semantics."""
     if not references:
         return None
     answer_tokens = Counter(_TOKEN_RE.findall(normalize_answer(answer)))
@@ -49,16 +48,39 @@ def semantic_similarity(answer: str, references: list[str]) -> float | None:
     return best
 
 
+def semantic_similarity(answer: str, references: list[str]) -> float | None:
+    """Deprecated compatibility alias for :func:`lexical_token_f1`."""
+    warnings.warn(
+        "semantic_similarity is a lexical token F1 proxy; use lexical_token_f1 or embedding_similarity",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return lexical_token_f1(answer, references)
+
+
 def is_empty_answer(answer: str) -> float:
     return 1.0 if not answer.strip() else 0.0
 
 
-def refusal_rate(answer: str, answerable: bool = True) -> float:
+def refusal_rate(
+    answer: str,
+    answerable: bool = True,
+    *,
+    patterns: list[str] | None = None,
+    exceptions: list[str] | None = None,
+    language: str = "auto",
+) -> float:
     """Per-sample refusal indicator; unanswerable samples are not penalized."""
     if not answerable:
         return 0.0
     lowered = answer.lower()
-    return 1.0 if any(pattern in lowered for pattern in _REFUSAL_PATTERNS) else 0.0
+    if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in (exceptions or [])):
+        return 0.0
+    selected = list(patterns or [])
+    if not selected:
+        languages = ("en", "zh") if language == "auto" else (language,)
+        selected = [pattern for name in languages for pattern in _REFUSAL_PATTERNS[name]]
+    return 1.0 if any(re.search(pattern, lowered, re.IGNORECASE) for pattern in selected) else 0.0
 
 
 def context_utilization(answer: str, contexts: list[str]) -> float | None:
@@ -107,22 +129,47 @@ def context_diversity(contexts: list[str]) -> float | None:
 
 
 def claim_support(answer: str, contexts: list[str]) -> float | None:
-    """Approximate claim-level support by sentence/token overlap.
+    """Approximate claim support using content coverage, phrases, and entities.
 
     This is intentionally deterministic and conservative; teams can replace it
     with a judge metric while keeping the same output field.
     """
     if not answer or not contexts:
         return None
-    context_tokens = set(_TOKEN_RE.findall(normalize_answer(" ".join(contexts))))
+    context_text = normalize_answer(" ".join(contexts))
+    context_tokens = set(_TOKEN_RE.findall(context_text))
+    stopwords = {"a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "was", "were", "with"}
     claims = [part.strip() for part in re.split(r"[.!?。！？；;]+", answer) if part.strip()]
     if not claims:
         return 0.0
-    supported = sum(bool(set(_TOKEN_RE.findall(normalize_answer(claim))) & context_tokens) for claim in claims)
+    supported = 0
+    for claim in claims:
+        tokens = [token for token in _TOKEN_RE.findall(normalize_answer(claim)) if token not in stopwords]
+        if not tokens:
+            continue
+        coverage = sum(token in context_tokens for token in tokens) / len(tokens)
+        phrases = [" ".join(tokens[index:index + 2]) for index in range(max(0, len(tokens) - 1))]
+        phrase_match = len(tokens) == 1 and tokens[0] in context_tokens or any(phrase in context_text for phrase in phrases)
+        entities = re.findall(r"\b(?:[A-Z][\w-]+|\d+(?:\.\d+)?)\b", claim)
+        entities_match = all(normalize_answer(entity) in context_text for entity in entities)
+        supported += coverage >= 0.6 and phrase_match and entities_match
     return supported / len(claims)
 
 
-def unanswerable_correctness(answer: str, answerable: bool) -> float:
+def unanswerable_correctness(
+    answer: str,
+    answerable: bool,
+    *,
+    patterns: list[str] | None = None,
+    exceptions: list[str] | None = None,
+    language: str = "auto",
+) -> float:
     """Score refusal behavior: refuse unanswerable questions, answer others."""
-    refused = refusal_rate(answer, answerable=True) == 1.0
+    refused = refusal_rate(
+        answer,
+        answerable=True,
+        patterns=patterns,
+        exceptions=exceptions,
+        language=language,
+    ) == 1.0
     return 1.0 if (refused == (not answerable)) else 0.0

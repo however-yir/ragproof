@@ -52,6 +52,14 @@ def _select_scalar_path(paths: list[tuple[str, Any]], keys: set[str]) -> str | N
 
 def inspect_response(payload: dict[str, Any]) -> dict[str, Any]:
     """Return candidate response paths without including response values."""
+    return inspect_responses([payload])
+
+
+def inspect_responses(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer mappings and evidence-based confidence across multiple responses."""
+    if not payloads:
+        raise ValueError("at least one response payload is required")
+    payload = payloads[0]
     paths = list(_walk(payload))
     answer_candidates = [path for path, value in paths if not isinstance(value, (dict, list)) and _leaf(path) in _ANSWER_KEYS]
     context_candidates = [path for path, value in paths if isinstance(value, list) and _leaf(path) in _CONTEXT_KEYS]
@@ -74,6 +82,37 @@ def inspect_response(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(items, list) and items and isinstance(items[0], dict):
             citation_id_path = _select_scalar_path(list(_walk(items[0])), _ID_KEYS)
 
+    selected = {
+        "answer_path": answer_path,
+        "contexts_path": contexts_path,
+        "citations_path": citations_path,
+        "context_id_path": context_id_path,
+        "context_text_path": context_text_path,
+    }
+
+    def observed(field: str, item: dict[str, Any]) -> bool:
+        path = selected[field]
+        if not path:
+            return False
+        if field in {"context_id_path", "context_text_path"} and contexts_path:
+            contexts = _dig(item, contexts_path)
+            return bool(
+                isinstance(contexts, list)
+                and contexts
+                and isinstance(contexts[0], dict)
+                and _dig(contexts[0], path) is not None
+            )
+        return _dig(item, path) is not None
+
+    def confidence(field: str, candidates: list[str], *, structural: bool = False) -> float:
+        path = selected[field]
+        if not path:
+            return 0.0
+        repeated = sum(observed(field, item) for item in payloads) / len(payloads)
+        ambiguity = max(0, len(candidates) - 1)
+        score = 0.45 + 0.35 * repeated + (0.15 if structural else 0.1) - min(0.25, ambiguity * 0.08)
+        return round(min(1.0, max(0.0, score)), 2)
+
     return {
         "answer_path": answer_path,
         "contexts_path": contexts_path,
@@ -87,12 +126,13 @@ def inspect_response(payload: dict[str, Any]) -> dict[str, Any]:
             "citations_paths": citation_candidates,
         },
         "confidence": {
-            "answer_path": 1.0 if answer_path else 0.0,
-            "contexts_path": 1.0 if contexts_path else 0.0,
-            "citations_path": 1.0 if citations_path else 0.0,
-            "context_id_path": 0.9 if context_id_path else 0.0,
-            "context_text_path": 0.9 if context_text_path else 0.0,
+            "answer_path": confidence("answer_path", answer_candidates),
+            "contexts_path": confidence("contexts_path", context_candidates, structural=True),
+            "citations_path": confidence("citations_path", citation_candidates, structural=True),
+            "context_id_path": confidence("context_id_path", [context_id_path] if context_id_path else []),
+            "context_text_path": confidence("context_text_path", [context_text_path] if context_text_path else []),
         },
+        "validated_responses": len(payloads),
     }
 
 

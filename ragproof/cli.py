@@ -7,6 +7,7 @@ import os
 import sys
 import webbrowser
 from pathlib import Path
+
 import click
 
 from . import __version__
@@ -256,7 +257,7 @@ def probe_cmd(config_path: str, questions: tuple[str, ...], output: str | None, 
     """Call an HTTP adapter once and suggest response-field mappings."""
     from .adapters import build_adapter
     from .config import RunConfig
-    from .probe import inspect_response, render_config
+    from .probe import inspect_responses, render_config
 
     try:
         config = RunConfig.load(config_path)
@@ -269,7 +270,8 @@ def probe_cmd(config_path: str, questions: tuple[str, ...], output: str | None, 
             raise click.ClickException(f"probe request failed: {response.error}")
         if not isinstance(response.raw, dict):
             raise click.ClickException("probe endpoint did not return a JSON object")
-        mapping = inspect_response(response.raw)
+        raw_payloads = [item.raw for item in responses if isinstance(item.raw, dict)]
+        mapping = inspect_responses(raw_payloads)
         starter = render_config(config.adapter, mapping)
         if output:
             destination = Path(output)
@@ -456,6 +458,9 @@ def compare_cmd(
         raise click.ClickException(str(exc)) from exc
     if as_json:
         click.echo(json.dumps({"passed": all_passed, "results": results_as_dicts(results)}, ensure_ascii=False))
+        if not all_passed:
+            sys.exit(1)
+        return
     else:
         for result in results:
             status = "PASS" if result.passed else "FAIL"

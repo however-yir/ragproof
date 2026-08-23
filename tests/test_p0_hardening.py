@@ -333,7 +333,8 @@ required_fields: [contexts]
 
 def test_benchmark_manifest_and_composite_action_contract():
     assert validate_benchmark_manifest("examples/benchmark-manifest.json") == []
-    action = yaml.safe_load(open(".github/actions/evaluate/action.yml", encoding="utf-8"))
+    with open(".github/actions/evaluate/action.yml", encoding="utf-8") as handle:
+        action = yaml.safe_load(handle)
     for name in (
         "min-deltas",
         "max-relative-drops",

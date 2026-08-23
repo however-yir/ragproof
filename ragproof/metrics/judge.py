@@ -124,6 +124,12 @@ class Judge:
     def close(self) -> None:
         self.client.close()
 
+    def __enter__(self) -> Judge:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
     def _load_cache(self) -> None:
         if not self.config.cache_enabled or not self._cache_path or not self._cache_path.exists():
             return

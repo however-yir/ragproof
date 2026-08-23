@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import random
 import statistics
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .metrics.registry import bounded_unit_interval, lower_is_better
 from .schema import load_run
@@ -29,7 +29,7 @@ def bootstrap_interval(values: Iterable[float], *, iterations: int = 1000, confi
         return None
     if len(numbers) == 1:
         return numbers[0], numbers[0]
-    rng = random.Random(seed)
+    rng = random.Random(seed)  # noqa: S311 - reproducible bootstrap resampling
     means = [statistics.fmean(rng.choices(numbers, k=len(numbers))) for _ in range(max(1, iterations))]
     alpha = (1 - confidence) / 2
     return _percentile(means, alpha), _percentile(means, 1 - alpha)
