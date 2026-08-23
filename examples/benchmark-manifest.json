@@ -1,10 +1,12 @@
 {
   "name": "ragproof-starter-benchmark",
   "schema": "ragproof.dataset.v1",
+  "license_file": "BENCHMARK_LICENSE.md",
   "datasets": [
     {
       "id": "sample-zh-extended",
       "path": "dataset.sample.jsonl",
+      "sha256": "8bef6d26eb53ab7bb9542208f6ab34d1365f55dd20c11092ab8f2bc5e93a7850",
       "language": "zh",
       "license": "CC0-1.0",
       "purpose": "offline smoke and adapter contract testing"
@@ -12,6 +14,7 @@
     {
       "id": "sample-zh",
       "path": "dataset.zh.jsonl",
+      "sha256": "68a7c6bfcb8acfa4dfffea05730e3226542ee8aaf152d6e571842aa498a0912c",
       "language": "zh",
       "license": "CC0-1.0",
       "purpose": "Chinese slicing and tokenization smoke testing"
@@ -19,6 +22,7 @@
     {
       "id": "enterprise-en",
       "path": "dataset.enterprise.en.jsonl",
+      "sha256": "4b9e61cc1c197456ff2808344cde68730b9089c2954569c901e99b089f941a0c",
       "language": "en",
       "license": "CC0-1.0",
       "purpose": "enterprise policy slicing smoke testing"
@@ -26,6 +30,7 @@
     {
       "id": "public-http-en",
       "path": "dataset.public-http.en.jsonl",
+      "sha256": "1c059ddec8441026d7da42facf3bd30cba0daeab4630103972e553164350a72a",
       "language": "en",
       "license": "CC0-1.0",
       "purpose": "reproducible HTTP retrieval benchmark with citation gates"

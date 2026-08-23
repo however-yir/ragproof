@@ -45,12 +45,25 @@ def citation_matches(citations: list[str], context_ids: list[str]) -> list[dict[
     return [{"citation": citation, "valid": citation in known} for citation in citations]
 
 
-def citation_span_overlap(answer: str, citations: list[str], contexts: list[str]) -> float | None:
-    """Estimate how much cited context text is reflected in the answer."""
+def citation_span_overlap(
+    answer: str,
+    citations: list[str],
+    contexts: list[str],
+    context_ids: list[str] | None = None,
+) -> float | None:
+    """Estimate answer overlap with the contexts selected by cited IDs.
+
+    ``context_ids`` is optional for source compatibility with pre-0.5 callers;
+    when omitted, the historical positional behavior is retained.
+    """
     if not citations or not contexts or not answer:
         return None
     answer_tokens = set(re.findall(r"[\w\u4e00-\u9fff]+", answer.lower()))
-    cited_text = " ".join(context for context, citation in zip(contexts, citations, strict=False) if citation)
+    if context_ids:
+        by_id = dict(zip(context_ids, contexts, strict=False))
+        cited_text = " ".join(by_id[citation] for citation in citations if citation in by_id)
+    else:
+        cited_text = " ".join(context for context, citation in zip(contexts, citations, strict=False) if citation)
     cited_tokens = set(re.findall(r"[\w\u4e00-\u9fff]+", cited_text.lower()))
     if not cited_tokens:
         return 0.0

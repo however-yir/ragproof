@@ -6,13 +6,20 @@ import json
 import os
 import time
 import asyncio
+import datetime
+import random
 import re
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
 
 from ..config import AdapterConfig
 from .base import RAGResponse
+
+
+class _ResponseTooLarge(ValueError):
+    pass
 
 
 def _dig(data: Any, path: str | None) -> Any:
@@ -69,6 +76,9 @@ class HTTPAdapter:
             if token:
                 headers["Authorization"] = f"Bearer {token}"
         self.client = httpx.Client(base_url=config.base_url, headers=headers, timeout=config.timeout)
+
+    def close(self) -> None:
+        self.client.close()
 
     def _request_payload(self, question: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
         cfg = self.config
@@ -129,8 +139,15 @@ class HTTPAdapter:
         last_payload: dict[str, Any] | None = None
         first_token_latency: float | None = None
         output_chars = 0
+        response_bytes = 0
+        declared = response.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > self.config.max_response_bytes:
+            raise _ResponseTooLarge(f"stream Content-Length exceeded {self.config.max_response_bytes} bytes")
         for raw_line in response.iter_lines():
             line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else raw_line
+            response_bytes += len(line.encode("utf-8", errors="replace")) + 1
+            if response_bytes > self.config.max_response_bytes:
+                raise _ResponseTooLarge(f"stream response exceeded {self.config.max_response_bytes} bytes")
             line = line.strip()
             if not line or line.startswith(":") or line.startswith("event:"):
                 continue
@@ -145,6 +162,8 @@ class HTTPAdapter:
             try:
                 payload = json.loads(line)
             except json.JSONDecodeError:
+                if line.startswith(("{", "[")):
+                    raise ValueError("stream contained truncated or invalid JSON")
                 token = line
                 payload = None
             else:
@@ -157,7 +176,42 @@ class HTTPAdapter:
                 first_token_latency = (time.perf_counter() - started) * 1000
             answer_parts.append(token)
             output_chars += len(token)
+            if output_chars > self.config.max_answer_chars:
+                raise _ResponseTooLarge(f"stream answer exceeded {self.config.max_answer_chars} characters")
         return "".join(answer_parts), last_payload, first_token_latency, output_chars
+
+    def _read_limited(self, response: httpx.Response) -> bytes:
+        declared = response.headers.get("content-length")
+        if declared:
+            try:
+                if int(declared) > self.config.max_response_bytes:
+                    raise _ResponseTooLarge(f"response Content-Length exceeded {self.config.max_response_bytes} bytes")
+            except ValueError as exc:
+                if isinstance(exc, _ResponseTooLarge):
+                    raise
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_bytes():
+            total += len(chunk)
+            if total > self.config.max_response_bytes:
+                raise _ResponseTooLarge(f"response exceeded {self.config.max_response_bytes} bytes")
+            chunks.append(chunk)
+        return b"".join(chunks)
+
+    @staticmethod
+    def _retry_after(response: httpx.Response) -> float | None:
+        raw = response.headers.get("retry-after")
+        if not raw:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            try:
+                instant = parsedate_to_datetime(raw)
+                now = datetime.datetime.now(instant.tzinfo or datetime.timezone.utc)
+                return max(0.0, (instant - now).total_seconds())
+            except (TypeError, ValueError, OverflowError):
+                return None
 
     def _one_request(self, question: str) -> RAGResponse:
         cfg = self.config
@@ -175,21 +229,43 @@ class HTTPAdapter:
                         response, start, cfg.stream_token_path, cfg.stream_done_markers
                     )
             else:
-                response = self.client.request(cfg.method, cfg.endpoint, params=params or None, json=json_body)
-                response.raise_for_status()
-                try:
-                    data = response.json()
-                except ValueError:
-                    answer = response.text
+                with self.client.stream(cfg.method, cfg.endpoint, params=params or None, json=json_body) as response:
+                    response.raise_for_status()
+                    content = self._read_limited(response)
+                    text = content.decode(response.encoding or "utf-8", errors="replace")
+                    content_type = response.headers.get("content-type", "").lower()
+                    try:
+                        parsed = json.loads(text)
+                    except ValueError:
+                        if "json" in content_type:
+                            raise ValueError("response declared JSON but could not be parsed")
+                        answer = text
+                    else:
+                        if not isinstance(parsed, dict):
+                            raise ValueError("JSON response must be an object")
+                        data = parsed
+        except _ResponseTooLarge as exc:
+            latency = (time.perf_counter() - start) * 1000
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=str(exc), error_type="response_too_large")
         except httpx.TimeoutException as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="timeout")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="timeout", retryable=True)
         except httpx.HTTPStatusError as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="http_status")
+            status = exc.response.status_code
+            return RAGResponse(
+                question=question,
+                answer="",
+                latency_ms=latency,
+                error=_safe_error(exc),
+                error_type="http_status",
+                status_code=status,
+                retryable=status == 429 or status >= 500,
+                retry_after_seconds=self._retry_after(exc.response),
+            )
         except httpx.HTTPError as exc:
             latency = (time.perf_counter() - start) * 1000
-            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="http_error")
+            return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="http_error", retryable=True)
         except (TypeError, ValueError, KeyError) as exc:
             latency = (time.perf_counter() - start) * 1000
             return RAGResponse(question=question, answer="", latency_ms=latency, error=_safe_error(exc), error_type="response_parse")
@@ -224,12 +300,28 @@ class HTTPAdapter:
                 citations.append(str(citation))
         if isinstance(mapped_answer, list):
             mapped_answer = "".join(str(part) for part in mapped_answer)
+        final_answer = str(mapped_answer) if mapped_answer is not None else ""
         latency = (time.perf_counter() - start) * 1000
+        contract_error: str | None = None
+        if len(final_answer) > cfg.max_answer_chars:
+            contract_error = f"answer exceeded {cfg.max_answer_chars} characters"
+        elif len(contexts) > cfg.max_contexts:
+            contract_error = f"contexts exceeded maximum count {cfg.max_contexts}"
+        elif any(len(context) > cfg.max_context_chars for context in contexts):
+            contract_error = f"context exceeded {cfg.max_context_chars} characters"
+        if contract_error:
+            return RAGResponse(
+                question=question,
+                answer="",
+                latency_ms=latency,
+                error=contract_error,
+                error_type="response_too_large",
+            )
         fallback = _dig(data, cfg.fallback_path)
         if cfg.expected_fallback is not None and fallback is not cfg.expected_fallback:
             return RAGResponse(
                 question=question,
-                answer=str(mapped_answer) if mapped_answer is not None else "",
+                answer=final_answer,
                 contexts=contexts,
                 context_ids=context_ids,
                 citations=citations,
@@ -240,7 +332,7 @@ class HTTPAdapter:
             )
         return RAGResponse(
             question=question,
-            answer=str(mapped_answer) if mapped_answer is not None else "",
+            answer=final_answer,
             contexts=contexts,
             context_ids=context_ids,
             citations=citations,
@@ -257,8 +349,16 @@ class HTTPAdapter:
             last_response = self._one_request(question)
             if last_response.error is None:
                 return last_response
-            if attempt < self.config.retries and self.config.retry_backoff:
-                time.sleep(self.config.retry_backoff * (2**attempt))
+            if not last_response.retryable:
+                return last_response
+            if attempt < self.config.retries:
+                delay = last_response.retry_after_seconds
+                if delay is None:
+                    delay = self.config.retry_backoff * (2**attempt)
+                if self.config.retry_jitter:
+                    delay += random.uniform(0, self.config.retry_jitter * max(delay, 1.0))
+                if delay:
+                    time.sleep(min(delay, max(self.config.timeout, 60.0)))
         return last_response or RAGResponse(question=question, answer="", error="request failed", error_type="unknown")
 
     async def aask(self, question: str) -> RAGResponse:

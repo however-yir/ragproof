@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import random
 import statistics
 from pathlib import Path
 from typing import Iterable
+
+from .metrics.registry import bounded_unit_interval, lower_is_better
+from .schema import load_run
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -37,7 +39,7 @@ def summarize_runs(paths: Iterable[str | Path], metrics: Iterable[str] | None = 
     """Summarize aggregate metrics across run JSON files in chronological order."""
     runs = []
     for path in paths:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = load_run(path)
         runs.append({"path": str(path), "timestamp": data.get("timestamp", ""), "git_sha": data.get("git_sha"), "aggregate": data.get("aggregate", {})})
     runs.sort(key=lambda item: (item["timestamp"], item["path"]))
     names = sorted(set(metrics or ()) or {name for run in runs for name in run["aggregate"]})
@@ -61,7 +63,7 @@ def summarize_runs(paths: Iterable[str | Path], metrics: Iterable[str] | None = 
 def find_first_regression(paths: Iterable[str | Path], metric: str, threshold: float, *, maximum: bool = False) -> str | None:
     """Find the first run that crosses a gate, useful for local regression bisects."""
     for path in paths:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        data = load_run(path)
         value = data.get("aggregate", {}).get(metric)
         if value is None:
             continue
@@ -72,17 +74,20 @@ def find_first_regression(paths: Iterable[str | Path], metric: str, threshold: f
 
 
 def recommend_from_history(paths: Iterable[str | Path], *, floor: float = 0.95, headroom: float = 1.05) -> dict[str, dict[str, float]]:
-    """Recommend gates from the recent lower/upper percentiles of run history."""
+    """Recommend gates from the 10th/90th percentiles of run history.
+
+    Higher-is-better gates use the historical lower tail; lower-is-better
+    maximums use the upper tail. ``floor``/``headroom`` add conservative slack.
+    """
     summary = summarize_runs(paths)
     higher: dict[str, float] = {}
     maximum: dict[str, float] = {}
-    lower_names = {"error_rate", "avg_latency_ms", "p95_latency_ms", "hallucination_rate", "duplicate_rate"}
     for name, item in summary["metrics"].items():
-        latest = item.get("latest")
-        if latest is None:
+        values = [float(value) for value in item.get("values", [])]
+        if not values:
             continue
-        if name in lower_names:
-            maximum[name] = round(float(latest) * headroom, 4)
-        elif 0 <= float(latest) <= 1:
-            higher[name] = round(float(latest) * floor, 4)
+        if lower_is_better(name):
+            maximum[name] = round(_percentile(values, 0.9) * headroom, 4)
+        elif bounded_unit_interval(name):
+            higher[name] = round(_percentile(values, 0.1) * floor, 4)
     return {"thresholds": higher, "max_thresholds": maximum}

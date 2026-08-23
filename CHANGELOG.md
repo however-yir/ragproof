@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Added versioned run artifacts, a packaged JSON Schema, legacy migration reads, and path-independent configuration fingerprints.
+- Made persisted run artifacts recursively secret/PII-safe, with atomic run/cache writes and strict top-level, Judge, and dataset field validation.
+- Corrected citation span matching to use context IDs and centralized metric direction/range metadata.
+- Unified CLI, report, JUnit, SARIF, and Composite Action gates behind a validated `GatePolicy`, including full Action inputs, outputs, and configurable artifact names.
+- Hardened HTTP retries, Retry-After handling, jitter, response size contracts, malformed streaming behavior, Judge concurrency/circuit state, and embedding model reuse.
+- Corrected CSV/XLSX list-cell imports, rejected unsupported legacy XLS files, and added hash/license validation for the CC0 benchmark manifest.
+
 ## 0.4.1 — 2026-08-23
 
 - Renamed the Python distribution to `ragproof-cli` while preserving the `ragproof` module and console command, preventing accidental installation of an unrelated PyPI project.

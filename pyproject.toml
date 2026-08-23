@@ -58,7 +58,7 @@ Changelog = "https://github.com/however-yir/ragproof/blob/main/CHANGELOG.md"
 include = ["ragproof*"]
 
 [tool.setuptools.package-data]
-ragproof = ["templates/*.html.j2", "templates/*.md.j2"]
+ragproof = ["templates/*.html.j2", "templates/*.md.j2", "schemas/*.json"]
 
 [tool.ruff]
 target-version = "py310"

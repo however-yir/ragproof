@@ -38,7 +38,7 @@ The hardest part of shipping RAG is not getting it to run — it is knowing that
 | **分组分析** | 按 tags / difficulty 汇总，支持中文、英文、企业、安全数据切片 |
 | **回归策略** | 绝对阈值、最小 delta、最大相对下降，支持 GitHub Actions 注释 |
 | **工程化** | `validate` / `init` / dry-run / JSON / CSV / judge cache / 多模型投票 / provenance |
-| **数据治理** | `dataset-lint` / `dataset-manifest`、近重复检测、分层抽样、CSV/JSON/XLSX/Parquet 导入、脱敏 |
+| **数据治理** | `dataset-lint` / `dataset-manifest`、近重复检测、分层抽样、CSV/JSON/XLSX/Parquet 导入、持久化产物递归脱敏 |
 | **趋势分析** | `trend` bootstrap 置信区间、`bisect` 首个回归定位、分组热力数据 |
 | **框架无关** | 通用 HTTP adapter，通过 YAML 声明请求/响应字段映射即可接入任何 RAG API（Spring AI / LangChain / LlamaIndex / 自研均可） |
 | **优雅降级** | Judge 端点不可用时自动跳过 LLM 指标，确定性指标照常输出 |
@@ -174,11 +174,19 @@ adapter:
   fallback_path: fallback                   # 可选：明确的服务降级标记
   expected_fallback: false                  # 评测时拒绝 fallback=true 的回答
   bearer_token_env: KNOWLEDGEOPS_API_KEY    # 自动生成 Authorization: Bearer ...
+  retries: 2                                # 仅 timeout / 网络错误 / 429 / 5xx 重试
+  max_response_bytes: 10000000              # 读取阶段限制响应体
+  max_answer_chars: 1000000
+  max_contexts: 1000
+  max_context_chars: 1000000
 
 judge:
   base_url: http://localhost:11434/v1       # Ollama / 任何 OpenAI 兼容端点
   model: qwen2.5:7b
   skip_on_error: true                       # judge 不可用时跳过而非失败
+  max_concurrency: 4                        # Judge 独立并发上限
+  max_prompt_tokens: 30000                  # 启发式 token 上限，超限保留首尾
+  max_prompt_chars: 120000                  # 字符级二次上限
 
 top_k: 5
 top_ks: [3, 5, 10]                          # 一次运行多个 k
@@ -190,7 +198,10 @@ exclude_tags: [draft]
 sample_limit: 100
 seed: 42
 required_metrics: [recall@5, citation_coverage]
+redact_sensitive: true                      # 保存 run/report 前递归清理 secret 与常见 PII
 ```
+
+未知的顶层、Judge 和数据集字段会直接报错，避免拼写错误被静默忽略；Adapter 仍允许插件自定义字段。Run JSON 的当前结构定义见 [`ragproof/schemas/run.schema.json`](ragproof/schemas/run.schema.json)，旧版 run 会在读取时兼容迁移。
 
 完整示例：[examples/knowledgeops.yaml](examples/knowledgeops.yaml)（对接 [knowledgeops-agent](https://github.com/however-yir/knowledgeops-agent)）、[examples/mock.yaml](examples/mock.yaml)（离线演示）。
 
@@ -211,7 +222,7 @@ required_metrics: [recall@5, citation_coverage]
 
 完整流水线示例：[examples/github-actions.yml](examples/github-actions.yml)。
 
-先用 `ragproof validate -c examples/mock.yaml` 检查配置，用 `ragproof run --dry-run -c examples/mock.yaml` 检查执行计划。
+先用 `ragproof validate -c examples/mock.yaml` 检查配置，用 `ragproof run --dry-run -c examples/mock.yaml` 检查执行计划。公开基准清单可用 `ragproof benchmark-manifest-lint examples/benchmark-manifest.json` 同时核对路径、SHA-256、数据 schema 与许可文件。
 
 ## Metrics Reference
 

@@ -1,5 +1,18 @@
 name: ragproof evaluation
 description: Run a RAG evaluation, render its report, and enforce regression gates.
+outputs:
+  run-json:
+    description: Path to the run JSON artifact.
+    value: ${{ inputs.output }}
+  html-report:
+    description: Path to the HTML report.
+    value: ${{ inputs.output }}.html
+  junit-report:
+    description: Path to the JUnit report.
+    value: ${{ inputs.output }}.xml
+  sarif-report:
+    description: Path to the SARIF report.
+    value: ${{ inputs.output }}.sarif
 inputs:
   config:
     description: Path to the ragproof YAML configuration.
@@ -20,6 +33,25 @@ inputs:
   max-thresholds:
     description: Newline-separated maximum gates such as error_rate<=0.1.
     required: false
+  min-deltas:
+    description: Newline-separated minimum deltas such as recall@5=-0.05.
+    required: false
+  max-relative-drops:
+    description: Newline-separated relative regression limits such as faithfulness=5%.
+    required: false
+  group-max-thresholds:
+    description: Newline-separated group maximums such as tags:zh:error_rate<=0.1.
+    required: false
+  min-sample-count:
+    description: Minimum selected sample count.
+    required: false
+  min-coverage:
+    description: Newline-separated coverage gates such as contexts=0.95.
+    required: false
+  allow-provenance-mismatch:
+    description: Allow comparisons across different provenance fingerprints.
+    required: false
+    default: 'false'
   policy:
     description: YAML/JSON threshold policy file.
     required: false
@@ -33,6 +65,10 @@ inputs:
     description: Python version used to run ragproof.
     required: false
     default: '3.11'
+  artifact-name:
+    description: Uploaded artifact name.
+    required: false
+    default: ragproof-evaluation
 runs:
   using: composite
   steps:
@@ -57,6 +93,8 @@ runs:
         RAGPROOF_OUTPUT: ${{ inputs.output }}
         RAGPROOF_REQUIRED_METRICS: ${{ inputs['required-metrics'] }}
         RAGPROOF_REQUIRED_FIELDS: ${{ inputs['required-fields'] }}
+        RAGPROOF_MIN_SAMPLE_COUNT: ${{ inputs['min-sample-count'] }}
+        RAGPROOF_MIN_COVERAGE: ${{ inputs['min-coverage'] }}
       run: |
         set -euo pipefail
         required_args=()
@@ -66,6 +104,10 @@ runs:
         while IFS= read -r field; do
           [[ -n "$field" ]] && required_args+=(--require-field "$field")
         done <<< "$RAGPROOF_REQUIRED_FIELDS"
+        while IFS= read -r coverage; do
+          [[ -n "$coverage" ]] && required_args+=(--min-coverage "$coverage")
+        done <<< "$RAGPROOF_MIN_COVERAGE"
+        [[ -n "$RAGPROOF_MIN_SAMPLE_COUNT" ]] && required_args+=(--min-sample-count "$RAGPROOF_MIN_SAMPLE_COUNT")
         ragproof run -c "$RAGPROOF_CONFIG" -o "$RAGPROOF_OUTPUT" "${required_args[@]}"
 
     - name: Compare against baseline
@@ -77,6 +119,13 @@ runs:
         RAGPROOF_THRESHOLDS: ${{ inputs.thresholds }}
         RAGPROOF_GROUP_THRESHOLDS: ${{ inputs['group-thresholds'] }}
         RAGPROOF_MAX_THRESHOLDS: ${{ inputs['max-thresholds'] }}
+        RAGPROOF_MIN_DELTAS: ${{ inputs['min-deltas'] }}
+        RAGPROOF_RELATIVE_DROPS: ${{ inputs['max-relative-drops'] }}
+        RAGPROOF_GROUP_MAX_THRESHOLDS: ${{ inputs['group-max-thresholds'] }}
+        RAGPROOF_MIN_SAMPLE_COUNT: ${{ inputs['min-sample-count'] }}
+        RAGPROOF_MIN_COVERAGE: ${{ inputs['min-coverage'] }}
+        RAGPROOF_REQUIRED_FIELDS: ${{ inputs['required-fields'] }}
+        RAGPROOF_ALLOW_PROVENANCE_MISMATCH: ${{ inputs['allow-provenance-mismatch'] }}
         RAGPROOF_POLICY: ${{ inputs.policy }}
       run: |
         set -euo pipefail
@@ -92,21 +141,70 @@ runs:
         while IFS= read -r threshold; do
           [[ -n "$threshold" ]] && max_args+=(--max "$threshold")
         done <<< "$RAGPROOF_MAX_THRESHOLDS"
+        delta_args=()
+        while IFS= read -r gate; do
+          [[ -n "$gate" ]] && delta_args+=(--min-delta "$gate")
+        done <<< "$RAGPROOF_MIN_DELTAS"
+        relative_args=()
+        while IFS= read -r gate; do
+          [[ -n "$gate" ]] && relative_args+=(--max-relative-drop "$gate")
+        done <<< "$RAGPROOF_RELATIVE_DROPS"
+        group_max_args=()
+        while IFS= read -r gate; do
+          [[ -n "$gate" ]] && group_max_args+=(--group-max "$gate")
+        done <<< "$RAGPROOF_GROUP_MAX_THRESHOLDS"
+        coverage_args=()
+        while IFS= read -r gate; do
+          [[ -n "$gate" ]] && coverage_args+=(--min-coverage "$gate")
+        done <<< "$RAGPROOF_MIN_COVERAGE"
+        required_args=()
+        while IFS= read -r field; do
+          [[ -n "$field" ]] && required_args+=(--require-field "$field")
+        done <<< "$RAGPROOF_REQUIRED_FIELDS"
+        sample_args=()
+        [[ -n "$RAGPROOF_MIN_SAMPLE_COUNT" ]] && sample_args+=(--min-sample-count "$RAGPROOF_MIN_SAMPLE_COUNT")
+        provenance_args=()
+        [[ "$RAGPROOF_ALLOW_PROVENANCE_MISMATCH" == "true" ]] && provenance_args+=(--allow-provenance-mismatch)
         policy_args=()
         [[ -n "$RAGPROOF_POLICY" ]] && policy_args+=(--policy "$RAGPROOF_POLICY")
-        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}" "${max_args[@]}" "${policy_args[@]}"
+        ragproof compare --baseline "$RAGPROOF_BASELINE" --current "$RAGPROOF_CURRENT" "${threshold_args[@]}" "${group_args[@]}" "${max_args[@]}" "${delta_args[@]}" "${relative_args[@]}" "${group_max_args[@]}" "${coverage_args[@]}" "${required_args[@]}" "${sample_args[@]}" "${provenance_args[@]}" "${policy_args[@]}"
 
     - name: Render report and summary
       if: ${{ always() }}
       shell: bash
       env:
         RAGPROOF_OUTPUT: ${{ inputs.output }}
+        RAGPROOF_BASELINE: ${{ inputs.baseline }}
+        RAGPROOF_THRESHOLDS: ${{ inputs.thresholds }}
+        RAGPROOF_GROUP_THRESHOLDS: ${{ inputs['group-thresholds'] }}
+        RAGPROOF_MAX_THRESHOLDS: ${{ inputs['max-thresholds'] }}
+        RAGPROOF_MIN_DELTAS: ${{ inputs['min-deltas'] }}
+        RAGPROOF_RELATIVE_DROPS: ${{ inputs['max-relative-drops'] }}
+        RAGPROOF_GROUP_MAX_THRESHOLDS: ${{ inputs['group-max-thresholds'] }}
+        RAGPROOF_MIN_SAMPLE_COUNT: ${{ inputs['min-sample-count'] }}
+        RAGPROOF_MIN_COVERAGE: ${{ inputs['min-coverage'] }}
+        RAGPROOF_REQUIRED_FIELDS: ${{ inputs['required-fields'] }}
+        RAGPROOF_POLICY: ${{ inputs.policy }}
+        RAGPROOF_ALLOW_PROVENANCE_MISMATCH: ${{ inputs['allow-provenance-mismatch'] }}
       run: |
         set -euo pipefail
         if [[ -f "$RAGPROOF_OUTPUT" ]]; then
-          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.html"
-          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.xml"
-          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.sarif"
+          report_args=()
+          [[ -n "$RAGPROOF_BASELINE" ]] && report_args+=(--baseline "$RAGPROOF_BASELINE")
+          [[ -n "$RAGPROOF_POLICY" ]] && report_args+=(--policy "$RAGPROOF_POLICY")
+          [[ -n "$RAGPROOF_MIN_SAMPLE_COUNT" ]] && report_args+=(--min-sample-count "$RAGPROOF_MIN_SAMPLE_COUNT")
+          [[ "$RAGPROOF_ALLOW_PROVENANCE_MISMATCH" == "true" ]] && report_args+=(--allow-provenance-mismatch)
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--threshold "$gate"); done <<< "$RAGPROOF_THRESHOLDS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--group-threshold "$gate"); done <<< "$RAGPROOF_GROUP_THRESHOLDS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--max "$gate"); done <<< "$RAGPROOF_MAX_THRESHOLDS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--min-delta "$gate"); done <<< "$RAGPROOF_MIN_DELTAS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--max-relative-drop "$gate"); done <<< "$RAGPROOF_RELATIVE_DROPS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--group-max "$gate"); done <<< "$RAGPROOF_GROUP_MAX_THRESHOLDS"
+          while IFS= read -r gate; do [[ -n "$gate" ]] && report_args+=(--min-coverage "$gate"); done <<< "$RAGPROOF_MIN_COVERAGE"
+          while IFS= read -r field; do [[ -n "$field" ]] && report_args+=(--require-field "$field"); done <<< "$RAGPROOF_REQUIRED_FIELDS"
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.html" "${report_args[@]}"
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.xml" "${report_args[@]}"
+          ragproof report "$RAGPROOF_OUTPUT" -o "$RAGPROOF_OUTPUT.sarif" "${report_args[@]}"
           python - "$RAGPROOF_OUTPUT" <<'PY'
         import json
         import os
@@ -121,7 +219,7 @@ runs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v7
       with:
-        name: ragproof-evaluation
+        name: ${{ inputs.artifact-name }}
         path: |
           ${{ inputs.output }}
           ${{ inputs.output }}.html

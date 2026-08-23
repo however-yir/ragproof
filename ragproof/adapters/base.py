@@ -21,6 +21,9 @@ class RAGResponse(BaseModel):
     streamed: bool = False
     error: str | None = None
     error_type: str | None = None
+    status_code: int | None = None
+    retryable: bool = False
+    retry_after_seconds: float | None = None
     raw: dict | None = None
 
 

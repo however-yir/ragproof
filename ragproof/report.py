@@ -6,11 +6,21 @@ import csv
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import Iterable
 
 from jinja2 import Environment, FileSystemLoader
 
-from .compare import compare, parse_group_max_thresholds, parse_group_thresholds, parse_max_thresholds, parse_relative_drops, parse_thresholds, results_as_dicts
+from .compare import (
+    compare_with_policy,
+    parse_group_max_thresholds,
+    parse_group_thresholds,
+    parse_max_thresholds,
+    parse_relative_drops,
+    parse_thresholds,
+    results_as_dicts,
+)
+from .policy import GatePolicy
+from .schema import load_run
 
 _TEMPLATES = Path(__file__).parent / "templates"
 
@@ -63,12 +73,18 @@ def _sample_comparison(baseline: dict, current: dict) -> list[dict]:
 
 
 def _render_junit(run: dict, output: Path) -> None:
-    suite = ET.Element("testsuite", name=str(run.get("name", "ragproof")), tests=str(len(run.get("results", []))))
+    comparison = run.get("comparison", {}).get("results", [])
+    suite = ET.Element("testsuite", name=str(run.get("name", "ragproof")), tests=str(len(run.get("results", [])) + len(comparison)))
     for result in run.get("results", []):
         case = ET.SubElement(suite, "testcase", name=str(result.get("id", "sample")), time=str(float(result.get("latency_ms", 0)) / 1000))
         if result.get("error"):
             failure = ET.SubElement(case, "failure", message=str(result.get("error_type") or "request error"))
             failure.text = str(result.get("error"))
+    for gate in comparison:
+        case = ET.SubElement(suite, "testcase", classname="ragproof.gates", name=str(gate.get("metric", "gate")))
+        if not gate.get("passed"):
+            failure = ET.SubElement(case, "failure", message=str(gate.get("kind") or "regression gate"))
+            failure.text = str(gate.get("reason"))
     ET.ElementTree(suite).write(output, encoding="utf-8", xml_declaration=True)
 
 
@@ -96,11 +112,14 @@ def render(
     group_thresholds: Iterable[str] = (),
     group_max_thresholds: Iterable[str] = (),
     policy: str | Path | None = None,
+    min_sample_count: int | None = None,
+    min_coverage: Iterable[str] = (),
+    required_fields: Iterable[str] = (),
     allow_provenance_mismatch: bool = False,
     worst: int | None = None,
 ) -> Path:
     """Render a report; format is inferred from the output extension."""
-    run = json.loads(Path(run_path).read_text(encoding="utf-8"))
+    run = load_run(run_path)
     run["results"] = _sort_by_severity(run.get("results", []))
     if worst:
         run["results"] = run["results"][:worst]
@@ -119,25 +138,23 @@ def render(
         groups = parse_group_thresholds(list(group_thresholds)) if group_thresholds else {}
         maximums = parse_max_thresholds(list(max_thresholds)) if max_thresholds else {}
         group_maximums = parse_group_max_thresholds(list(group_max_thresholds)) if group_max_thresholds else {}
-        if policy:
-            from .compare import load_threshold_policy
-
-            policy_data = cast(dict[str, Any], load_threshold_policy(policy))
-            absolute.update({str(key): float(value) for key, value in (policy_data.get("thresholds") or {}).items()})
-            maximums.update({str(key): float(value) for key, value in (policy_data.get("max_thresholds") or {}).items()})
-        results, passed = compare(
-            baseline,
-            run_path,
-            absolute,
+        coverage = parse_thresholds(list(min_coverage)) if min_coverage else {}
+        gate_policy = GatePolicy.load(policy) if policy else GatePolicy()
+        gate_policy = gate_policy.merged(
+            thresholds=absolute,
+            max_thresholds=maximums,
             min_deltas=deltas,
             max_relative_drops=relative,
-            max_thresholds=maximums,
             group_thresholds=groups,
             group_max_thresholds=group_maximums,
+            min_sample_count=min_sample_count,
+            min_coverage=coverage,
+            required_fields=required_fields,
             allow_provenance_mismatch=allow_provenance_mismatch,
         )
+        results, passed = compare_with_policy(baseline, run_path, gate_policy)
         run["comparison"] = {"passed": passed, "results": results_as_dicts(results)}
-        baseline_data = json.loads(Path(baseline).read_text(encoding="utf-8"))
+        baseline_data = load_run(baseline)
         run["comparison_samples"] = _sample_comparison(baseline_data, run)
     out.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "csv":

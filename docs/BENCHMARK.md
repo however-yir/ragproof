@@ -8,6 +8,7 @@ The repository includes a small, deterministic benchmark that exercises the real
 
 - corpus: `examples/public_benchmark_corpus.jsonl` (8 synthetic enterprise-policy documents, CC0-1.0)
 - questions: `examples/dataset.public-http.en.jsonl` (8 English questions with gold document and citation IDs, CC0-1.0)
+- manifest/license: `examples/benchmark-manifest.json` and `examples/BENCHMARK_LICENSE.md` (paths, SHA-256 values, and CC0 evidence checked in CI)
 - service: `examples/public_benchmark_server.py` (stdlib lexical retrieval, no model or network dependency)
 - configuration: `examples/public-http-benchmark.yaml`
 - known-good run: `examples/baselines/public-http-v0.4.1.json`

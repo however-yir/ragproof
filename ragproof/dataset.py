@@ -10,7 +10,9 @@ import random
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .privacy import redact_text as redact_text
 
 
 class Sample(BaseModel):
@@ -20,6 +22,8 @@ class Sample(BaseModel):
     it possible to find regressions in a slice of a dataset, while multiple
     references and expected citations cover real-world QA datasets.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str
     question: str
@@ -51,6 +55,52 @@ class Sample(BaseModel):
         return self
 
 
+_LIST_FIELDS = {
+    "ground_truths",
+    "relevant_doc_ids",
+    "negative_doc_ids",
+    "expected_citations",
+    "tags",
+}
+
+
+def _parse_list_cell(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, (tuple, set)):
+        return [str(item) for item in value]
+    text = str(value).strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        parsed = json.loads(text)
+        if not isinstance(parsed, list):
+            raise ValueError("list-like cell must contain a JSON array")
+        return [str(item) for item in parsed]
+    separator = "|" if "|" in text else ";" if ";" in text else ","
+    return [item.strip() for item in text.split(separator) if item.strip()]
+
+
+def _normalize_tabular_record(record: dict[str, Any]) -> dict[str, Any]:
+    normalized = {str(key): value for key, value in record.items() if key and value is not None and value != ""}
+    for field in _LIST_FIELDS.intersection(normalized):
+        normalized[field] = _parse_list_cell(normalized[field])
+    if "metadata" in normalized and isinstance(normalized["metadata"], str):
+        parsed = json.loads(normalized["metadata"])
+        if not isinstance(parsed, dict):
+            raise ValueError("metadata cell must contain a JSON object")
+        normalized["metadata"] = parsed
+    if "answerable" in normalized and isinstance(normalized["answerable"], str):
+        value = normalized["answerable"].strip().lower()
+        if value in {"true", "1", "yes"}:
+            normalized["answerable"] = True
+        elif value in {"false", "0", "no"}:
+            normalized["answerable"] = False
+    return normalized
+
+
 def _records_from_path(path: str | Path) -> list[dict[str, Any]]:
     """Load common tabular formats without making heavy dependencies mandatory."""
     source = Path(path)
@@ -73,8 +123,10 @@ def _records_from_path(path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("JSON dataset must be an object or an array of objects")
     if suffix == ".csv":
         with source.open(newline="", encoding="utf-8") as handle:
-            return [dict(row) for row in csv.DictReader(handle)]
-    if suffix in {".xlsx", ".xls"}:
+            return [_normalize_tabular_record(dict(row)) for row in csv.DictReader(handle)]
+    if suffix == ".xls":
+        raise ValueError("legacy .xls files are not supported; save as .xlsx or CSV")
+    if suffix == ".xlsx":
         try:
             import openpyxl  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -85,7 +137,7 @@ def _records_from_path(path: str | Path) -> list[dict[str, Any]]:
         if not rows:
             return []
         headers = [str(value) if value is not None else "" for value in rows[0]]
-        return [dict(zip(headers, row, strict=False)) for row in rows[1:]]
+        return [_normalize_tabular_record(dict(zip(headers, row, strict=False))) for row in rows[1:]]
     if suffix == ".parquet":
         try:
             import pandas as pd  # type: ignore[import-not-found]
@@ -168,18 +220,6 @@ def manifest(path: str | Path) -> dict[str, Any]:
     }
 
 
-_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.\w+\b")
-_PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d ()-]{7,}\d)(?!\d)")
-_KEY_RE = re.compile(r"\b(?:sk|pk|ghp|github_pat|AKIA)[A-Za-z0-9_-]{12,}\b")
-
-
-def redact_text(text: str) -> str:
-    """Remove common PII/credential patterns before sharing a dataset."""
-    value = _EMAIL_RE.sub("[REDACTED_EMAIL]", text)
-    value = _PHONE_RE.sub("[REDACTED_PHONE]", value)
-    return _KEY_RE.sub("[REDACTED_SECRET]", value)
-
-
 def near_duplicate_questions(samples: list[Sample], threshold: float = 0.9) -> list[tuple[str, str, float]]:
     """Find highly similar questions using a deterministic token Jaccard score."""
     if not 0 < threshold <= 1:
@@ -247,3 +287,45 @@ def filter_samples(
     if limit and stratify_by:
         return stratified_sample(filtered, limit, dimension=stratify_by, seed=seed)
     return filtered[:limit] if limit else filtered
+
+
+def validate_benchmark_manifest(path: str | Path) -> list[str]:
+    """Validate benchmark paths, content hashes, and declared license evidence."""
+    source = Path(path).resolve()
+    root = source.parent
+    try:
+        value = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [str(exc)]
+    if not isinstance(value, dict) or not isinstance(value.get("datasets"), list):
+        return ["benchmark manifest must contain a datasets array"]
+    license_file = value.get("license_file")
+    errors: list[str] = []
+    if not isinstance(license_file, str) or not (root / license_file).is_file():
+        errors.append("manifest license_file is missing or does not exist")
+    elif "CC0-1.0" not in (root / license_file).read_text(encoding="utf-8"):
+        errors.append("manifest license_file does not identify CC0-1.0")
+    seen_ids: set[str] = set()
+    for index, item in enumerate(value["datasets"], start=1):
+        if not isinstance(item, dict):
+            errors.append(f"dataset {index} must be an object")
+            continue
+        dataset_id = str(item.get("id", ""))
+        if not dataset_id or dataset_id in seen_ids:
+            errors.append(f"dataset {index} has a missing or duplicate id")
+        seen_ids.add(dataset_id)
+        relative = item.get("path")
+        if not isinstance(relative, str):
+            errors.append(f"dataset {dataset_id or index} path is missing")
+            continue
+        dataset_path = (root / relative).resolve()
+        if not dataset_path.is_relative_to(root) or not dataset_path.is_file():
+            errors.append(f"dataset {dataset_id or index} path is missing or escapes the manifest directory")
+            continue
+        digest = hashlib.sha256(dataset_path.read_bytes()).hexdigest()
+        if item.get("sha256") != digest:
+            errors.append(f"dataset {dataset_id or index} sha256 does not match")
+        if item.get("license") != "CC0-1.0":
+            errors.append(f"dataset {dataset_id or index} must declare CC0-1.0")
+        errors.extend(f"dataset {dataset_id or index}: {error}" for error in validate(dataset_path))
+    return errors

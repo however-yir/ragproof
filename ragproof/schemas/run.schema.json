@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/however-yir/ragproof/blob/main/ragproof/schemas/run.schema.json",
+  "title": "ragproof run artifact",
+  "type": "object",
+  "required": ["schema_version", "aggregate", "results", "provenance"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 2},
+    "name": {"type": "string"},
+    "sample_count": {"type": "integer", "minimum": 0},
+    "aggregate": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+    "results": {"type": "array", "items": {"type": "object"}},
+    "provenance": {
+      "type": "object",
+      "required": ["dataset_sha256", "config_sha256", "selected_sample_ids_sha256"]
+    }
+  },
+  "additionalProperties": true
+}

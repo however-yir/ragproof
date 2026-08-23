@@ -56,6 +56,7 @@ jobs:
           ragproof report runs/ci.json -o runs/ci-report.sarif
           ragproof dataset-manifest examples/dataset.sample.jsonl --json
           ragproof dataset-lint examples/dataset.sample.jsonl
+          ragproof benchmark-manifest-lint examples/benchmark-manifest.json
           ragproof trend runs/ci.json -o runs/ci-trend.json
 
       - name: Public HTTP benchmark gate

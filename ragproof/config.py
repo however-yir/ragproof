@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+
+from .privacy import redact_nested
 
 _ENV_PATTERN = re.compile(r"\$\{(\w+)\}")
 
@@ -56,6 +58,11 @@ class AdapterConfig(BaseModel):
     timeout: float = 60.0
     retries: int = 0
     retry_backoff: float = 0.25
+    retry_jitter: float = 0.1
+    max_response_bytes: int = 10_000_000
+    max_answer_chars: int = 1_000_000
+    max_contexts: int = 1_000
+    max_context_chars: int = 1_000_000
     # Request mapping.
     query_param: str | None = None
     json_field: str | None = None
@@ -99,18 +106,25 @@ class AdapterConfig(BaseModel):
             raise ValueError("retries must be 0 or greater")
         return value
 
-    @field_validator("retry_backoff")
+    @field_validator("retry_backoff", "retry_jitter")
     @classmethod
     def non_negative_backoff(cls, value: float) -> float:
         if value < 0:
-            raise ValueError("retry_backoff must be 0 or greater")
+            raise ValueError("retry timing values must be 0 or greater")
+        return value
+
+    @field_validator("max_response_bytes", "max_answer_chars", "max_contexts", "max_context_chars")
+    @classmethod
+    def positive_limits(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("adapter size limits must be at least 1")
         return value
 
 
 class JudgeConfig(BaseModel):
     """LLM-as-judge backend (OpenAI-compatible, works with Ollama)."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     base_url: str = "http://localhost:11434/v1"
@@ -129,6 +143,10 @@ class JudgeConfig(BaseModel):
     prompt_overrides: dict[str, str] = Field(default_factory=dict)
     prompt_version: str = "builtin-v1"
     max_failures: int | None = None
+    max_concurrency: int = 4
+    min_request_interval: float = 0.0
+    max_prompt_chars: int = 120_000
+    max_prompt_tokens: int = Field(default=30_000, ge=16)
 
     @field_validator("timeout")
     @classmethod
@@ -152,11 +170,28 @@ class JudgeConfig(BaseModel):
             raise ValueError("vote must be mean or median")
         return value
 
+    @field_validator("max_concurrency", "max_prompt_chars")
+    @classmethod
+    def positive_limits(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("judge limits must be at least 1")
+        return value
+
+    @field_validator("min_request_interval")
+    @classmethod
+    def non_negative_interval(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("min_request_interval must be 0 or greater")
+        return value
+
 
 class RunConfig(BaseModel):
     """Top-level run configuration loaded from YAML."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
+
+    _dataset_label: str | None = PrivateAttr(default=None)
+    _legacy_dataset_label: str | None = PrivateAttr(default=None)
 
     name: str = "ragproof-run"
     dataset: str
@@ -220,6 +255,9 @@ class RunConfig(BaseModel):
         expanded, missing_env_vars = _expand_env(config_path.read_text(encoding="utf-8"))
         raw = yaml.safe_load(expanded) or {}
         config = cls.model_validate(raw)
+        raw_dataset = str(raw.get("dataset", config.dataset)).replace("\\", "/")
+        config._legacy_dataset_label = raw_dataset
+        config._dataset_label = Path(raw_dataset).name if Path(raw_dataset).is_absolute() else raw_dataset
         dataset_path = Path(config.dataset)
         if not dataset_path.is_absolute():
             relative_to_config = (config_path.parent / dataset_path).resolve()
@@ -234,8 +272,52 @@ class RunConfig(BaseModel):
         return sorted(set([self.top_k, *self.top_ks]))
 
     def summary(self) -> dict[str, Any]:
-        """Return reproducible metadata without exposing header secrets."""
-        adapter = self.adapter.model_dump(exclude_none=True)
+        """Return portable, recursively redacted run metadata."""
+        label = self._dataset_label or (Path(self.dataset).name if Path(self.dataset).is_absolute() else self.dataset)
+        summary = {
+            "name": self.name,
+            "dataset": label,
+            "adapter": self.adapter.model_dump(exclude_none=True),
+            "judge": self.judge.model_dump(exclude_none=True),
+            "concurrency": self.concurrency,
+            "retries": self.retries,
+            "retry_backoff": self.retry_backoff,
+            "top_ks": self.effective_top_ks(),
+            "sample_limit": self.sample_limit,
+            "include_tags": self.include_tags,
+            "exclude_tags": self.exclude_tags,
+            "seed": self.seed,
+            "group_by": self.group_by,
+            "required_fields": sorted(set(self.required_fields)),
+            "min_sample_count": self.min_sample_count,
+            "min_coverage": self.min_coverage,
+            "stratify_by": self.stratify_by,
+            "deduplicate_questions": self.deduplicate_questions,
+            "redact_sensitive": self.redact_sensitive,
+            "tokenizer": self.tokenizer,
+            "embedding_model": self.embedding_model,
+            "required_metrics": sorted(set(self.required_metrics)),
+        }
+        return redact_nested(summary)
+
+    def fingerprint_summary(self) -> dict[str, Any]:
+        """Return evaluation-affecting config independent of filesystem location."""
+        summary = self.summary()
+        summary.pop("dataset", None)
+        return summary
+
+    def legacy_fingerprint_summary(self) -> dict[str, Any]:
+        """Reproduce the v0.4.1 fingerprint for comparisons with old baselines."""
+        adapter = self.adapter.model_dump(
+            exclude={
+                "retry_jitter",
+                "max_response_bytes",
+                "max_answer_chars",
+                "max_contexts",
+                "max_context_chars",
+            },
+            exclude_none=True,
+        )
         headers = adapter.get("headers", {})
         adapter["headers"] = {
             key: "***"
@@ -243,11 +325,16 @@ class RunConfig(BaseModel):
             else _redact_value(value)
             for key, value in headers.items()
         }
+        judge = self.judge.model_dump(
+            exclude={"api_key_env", "max_concurrency", "min_request_interval", "max_prompt_chars", "max_prompt_tokens"},
+            exclude_none=True,
+        )
+        label = self._legacy_dataset_label or self.dataset
         return {
             "name": self.name,
-            "dataset": self.dataset,
+            "dataset": label,
             "adapter": adapter,
-            "judge": self.judge.model_dump(exclude={"api_key_env"}, exclude_none=True),
+            "judge": judge,
             "concurrency": self.concurrency,
             "retries": self.retries,
             "top_ks": self.effective_top_ks(),

@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from ..config import JudgeConfig
+from ..io import atomic_write_text
 
 _PROMPTS = {
     "faithfulness": """You are a strict RAG evaluation judge. Rate how well every claim in the ANSWER is supported by the CONTEXTS. 10 means fully grounded, 0 means fabricated.
@@ -95,8 +96,10 @@ class Judge:
             timeout=config.timeout,
         )
         self._lock = threading.RLock()
+        self._request_slots = threading.BoundedSemaphore(config.max_concurrency)
         self._cache: dict[str, dict[str, Any]] = {}
         self._failures = 0
+        self._last_request_at = 0.0
         self._cache_path = Path(config.cache_path).expanduser() if config.cache_path else None
         self._load_cache()
 
@@ -108,6 +111,18 @@ class Judge:
     def prompt_fingerprint(self) -> str:
         payload = json.dumps({"version": self.config.prompt_version, "overrides": self.config.prompt_overrides}, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @property
+    def failures(self) -> int:
+        with self._lock:
+            return self._failures
+
+    @property
+    def circuit_open(self) -> bool:
+        return self.config.max_failures is not None and self.failures >= self.config.max_failures
+
+    def close(self) -> None:
+        self.client.close()
 
     def _load_cache(self) -> None:
         if not self.config.cache_enabled or not self._cache_path or not self._cache_path.exists():
@@ -121,7 +136,21 @@ class Judge:
         if not self.config.cache_enabled or not self._cache_path:
             return
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache_path.write_text(json.dumps(self._cache, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(self._cache_path, json.dumps(self._cache, ensure_ascii=False, indent=2))
+
+    def _record_failure(self) -> None:
+        with self._lock:
+            self._failures += 1
+
+    def _throttle(self) -> None:
+        interval = self.config.min_request_interval
+        if not interval:
+            return
+        with self._lock:
+            remaining = interval - (time.monotonic() - self._last_request_at)
+            if remaining > 0:
+                time.sleep(remaining)
+            self._last_request_at = time.monotonic()
 
     def _cache_key(self, prompt: str, model: str) -> str:
         payload = json.dumps({"model": model, "prompt": prompt}, ensure_ascii=False, sort_keys=True)
@@ -147,7 +176,7 @@ class Judge:
         return max(0.0, min(10.0, float(match.group()))) / 10.0, content.strip()
 
     def _score(self, prompt: str, model: str) -> JudgeResult | None:
-        if self.config.max_failures is not None and self._failures >= self.config.max_failures:
+        if self.circuit_open:
             return None
         key = self._cache_key(prompt, model)
         if self.config.cache_enabled:
@@ -161,14 +190,18 @@ class Judge:
         last_error: Exception | None = None
         for attempt in range(self.config.retries + 1):
             try:
-                response = self.client.post(
-                    "/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0,
-                    },
-                )
+                with self._request_slots:
+                    if self.circuit_open:
+                        return None
+                    self._throttle()
+                    response = self.client.post(
+                        "/chat/completions",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0,
+                        },
+                    )
                 response.raise_for_status()
                 payload = response.json()
                 content = payload["choices"][0]["message"]["content"]
@@ -192,8 +225,10 @@ class Judge:
                 return result
             except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
                 last_error = exc
-                self._failures += 1
-                if self.config.max_failures is not None and self._failures >= self.config.max_failures:
+                self._record_failure()
+                if self.circuit_open:
+                    break
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code < 500 and exc.response.status_code != 429:
                     break
                 if attempt < self.config.retries and self.config.retry_backoff:
                     time.sleep(self.config.retry_backoff * (2**attempt))
@@ -227,7 +262,25 @@ class Judge:
 
     def _prompt(self, metric: str, **values: str) -> str:
         template = self.config.prompt_overrides.get(metric, _PROMPTS[metric])
-        return template.format(**values)
+        prompt = template.format(**values)
+        matches = list(re.finditer(r"[\w\u4e00-\u9fff]+|[^\s\w]", prompt))
+        token_limit = self.config.max_prompt_tokens
+        if len(matches) > token_limit:
+            marker = "\n...[TRUNCATED BY RAGPROOF]...\n"
+            marker_tokens = len(re.findall(r"[\w\u4e00-\u9fff]+|[^\s\w]", marker))
+            retained = max(2, token_limit - marker_tokens)
+            head_count = retained // 2
+            tail_count = retained - head_count
+            head_end = matches[head_count - 1].end()
+            tail_start = matches[-tail_count].start()
+            prompt = prompt[:head_end] + marker + prompt[tail_start:]
+        limit = self.config.max_prompt_chars
+        if len(prompt) <= limit:
+            return prompt
+        marker = "\n...[TRUNCATED BY RAGPROOF]...\n"
+        head = max(0, (limit - len(marker)) // 2)
+        tail = max(0, limit - len(marker) - head)
+        return prompt[:head] + marker + prompt[-tail:]
 
     def evaluate_faithfulness(self, answer: str, contexts: list[str]) -> JudgeResult | None:
         if not answer or not contexts:

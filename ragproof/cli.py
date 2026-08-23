@@ -7,8 +7,6 @@ import os
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Any, cast
-
 import click
 
 from . import __version__
@@ -136,6 +134,25 @@ def dataset_lint_cmd(path: str, near_duplicate_threshold: float, as_json: bool):
                 click.echo(f"  - {left} ~ {right} ({score:.3f})")
         if errors or duplicates:
             raise click.exceptions.Exit(1)
+
+
+@cli.command("benchmark-manifest-lint")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--json", "as_json", is_flag=True)
+def benchmark_manifest_lint_cmd(path: str, as_json: bool):
+    """Verify benchmark dataset paths, hashes, schemas, and license evidence."""
+    from .dataset import validate_benchmark_manifest
+
+    errors = validate_benchmark_manifest(path)
+    payload = {"valid": not errors, "manifest": path, "errors": errors}
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False))
+    elif errors:
+        for error in errors:
+            click.echo(f"✘ {error}")
+        raise click.exceptions.Exit(1)
+    else:
+        click.echo(f"✔ benchmark manifest valid: {path}")
 
 
 @cli.command("trend")
@@ -395,7 +412,7 @@ def compare_cmd(
 ):
     """Compare two runs and fail (exit 1) if any gate is not met."""
     from .compare import (
-        compare,
+        compare_with_policy,
         load_threshold_policy,
         parse_group_max_thresholds,
         parse_group_thresholds,
@@ -405,6 +422,7 @@ def compare_cmd(
         recommend_thresholds,
         results_as_dicts,
     )
+    from .policy import GatePolicy
 
     try:
         if recommend:
@@ -420,32 +438,20 @@ def compare_cmd(
         parsed_relative = parse_relative_drops(list(relative_drops))
         parsed_groups = parse_group_thresholds(list(group_thresholds))
         parsed_group_max = parse_group_max_thresholds(list(group_max_thresholds))
-        values: dict[str, Any] = {}
-        if policy:
-            values = cast(dict[str, Any], load_threshold_policy(policy))
-            parsed.update({str(key): float(value) for key, value in (values.get("thresholds") or {}).items()})
-            parsed_max.update({str(key): float(value) for key, value in (values.get("max_thresholds") or {}).items()})
-            parsed_deltas.update({str(key): float(value) for key, value in (values.get("min_deltas") or {}).items()})
-            parsed_relative.update({str(key): float(value) for key, value in (values.get("max_relative_drops") or {}).items()})
-        raw_min_sample_count = values.get("min_sample_count") if policy else None
-        policy_min_sample_count = int(cast(str | int, raw_min_sample_count)) if raw_min_sample_count is not None else min_sample_count
-        policy_min_coverage = {str(key): float(value) for key, value in ((values.get("min_coverage") or {}) if policy else {}).items()}
-        policy_min_coverage.update(_parse_key_values(min_coverage))
-        policy_required_fields = list((values.get("required_fields") or []) if policy else []) + list(require_field)
-        results, all_passed = compare(
-            baseline,
-            current,
-            parsed,
+        gate_policy = load_threshold_policy(policy) if policy else GatePolicy()
+        gate_policy = gate_policy.merged(
+            thresholds=parsed,
+            max_thresholds=parsed_max,
             min_deltas=parsed_deltas,
             max_relative_drops=parsed_relative,
-            max_thresholds=parsed_max,
             group_thresholds=parsed_groups,
             group_max_thresholds=parsed_group_max,
-            min_sample_count=policy_min_sample_count,
-            min_coverage=policy_min_coverage,
-            required_fields=policy_required_fields,
+            min_sample_count=min_sample_count,
+            min_coverage=_parse_key_values(min_coverage),
+            required_fields=require_field,
             allow_provenance_mismatch=allow_provenance_mismatch,
         )
+        results, all_passed = compare_with_policy(baseline, current, gate_policy)
     except Exception as exc:
         raise click.ClickException(str(exc)) from exc
     if as_json:
@@ -473,6 +479,9 @@ def compare_cmd(
 @click.option("--group-threshold", "group_thresholds", multiple=True)
 @click.option("--group-max", "group_max_thresholds", multiple=True)
 @click.option("--policy", type=click.Path(exists=True))
+@click.option("--min-sample-count", type=int)
+@click.option("--min-coverage", multiple=True)
+@click.option("--require-field", "required_fields", multiple=True)
 @click.option("--allow-provenance-mismatch", is_flag=True)
 @click.option("--worst", type=int, help="Show only the N most severe samples in the report.")
 @click.option("--open", "open_report", is_flag=True, help="Open the generated report in the default browser.")
@@ -487,6 +496,9 @@ def report_cmd(
     group_thresholds: tuple[str, ...],
     group_max_thresholds: tuple[str, ...],
     policy: str | None,
+    min_sample_count: int | None,
+    min_coverage: tuple[str, ...],
+    required_fields: tuple[str, ...],
     allow_provenance_mismatch: bool,
     worst: int | None,
     open_report: bool,
@@ -506,6 +518,9 @@ def report_cmd(
             group_thresholds=group_thresholds,
             group_max_thresholds=group_max_thresholds,
             policy=policy,
+            min_sample_count=min_sample_count,
+            min_coverage=min_coverage,
+            required_fields=required_fields,
             allow_provenance_mismatch=allow_provenance_mismatch,
             worst=worst,
         )

@@ -45,7 +45,10 @@ from .metrics import (
 )
 from .metrics.judge import Judge, JudgeResult
 from .metrics.embedding import embedding_similarity
+from .io import atomic_write_text
+from .privacy import redact_nested
 from .provenance import sha256_file, sha256_json, sha256_values
+from .schema import CURRENT_RUN_SCHEMA_VERSION
 
 
 def _git_sha() -> str | None:
@@ -99,7 +102,12 @@ def _evaluate_sample(
         metrics["citation_validity"] = citation_validity(response.citations, response.context_ids)
         metrics["citation_precision"] = citation_precision(response.citations, response.context_ids)
         metrics["citation_recall"] = citation_recall(response.citations, sample.expected_citations)
-        metrics["citation_span_overlap"] = citation_span_overlap(response.answer, response.citations, response.contexts)
+        metrics["citation_span_overlap"] = citation_span_overlap(
+            response.answer,
+            response.citations,
+            response.contexts,
+            response.context_ids,
+        )
         metrics["exact_match"] = exact_match(response.answer, sample.ground_truths)
         metrics["semantic_similarity"] = semantic_similarity(response.answer, sample.ground_truths)
         if embedding_model:
@@ -265,20 +273,27 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
     judge = Judge(config.judge) if config.judge.enabled else None
     top_ks = config.effective_top_ks()
 
-    with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
-        results = list(
-            pool.map(
-                lambda sample: _evaluate_sample(
-                    sample,
-                    adapter,
-                    judge,
-                    top_ks,
-                    tokenizer=config.tokenizer,
-                    embedding_model=config.embedding_model,
-                ),
-                samples,
+    try:
+        with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
+            results = list(
+                pool.map(
+                    lambda sample: _evaluate_sample(
+                        sample,
+                        adapter,
+                        judge,
+                        top_ks,
+                        tokenizer=config.tokenizer,
+                        embedding_model=config.embedding_model,
+                    ),
+                    samples,
+                )
             )
-        )
+    finally:
+        close_adapter = getattr(adapter, "close", None)
+        if callable(close_adapter):
+            close_adapter()
+        if judge:
+            judge.close()
 
     total_cost = sum(
         detail.get("estimated_cost", 0.0)
@@ -287,37 +302,49 @@ def run(config: RunConfig, output: str | Path) -> dict[str, Any]:
         if detail
     )
     coverage = _coverage(results)
-    report = {
+    config_summary = config.summary()
+    dataset_label = str(config_summary["dataset"])
+    dataset_manifest = ds.manifest(config.dataset)
+    dataset_manifest["path"] = dataset_label
+    report: dict[str, Any] = {
+        "schema_version": CURRENT_RUN_SCHEMA_VERSION,
         "name": config.name,
         "ragproof_version": __version__,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "duration_ms": (time.perf_counter() - started) * 1000,
         "git_sha": config.git_sha or _git_sha(),
-        "dataset": str(config.dataset),
+        "dataset": dataset_label,
         "dataset_sample_count": ds.samples_count(config.dataset),
         "sample_count": len(samples),
         "provenance": {
             "schema_version": 2,
             "dataset_sha256": sha256_file(config.dataset),
-            "config_sha256": sha256_json(config.summary()),
+            "config_sha256": sha256_json(config.fingerprint_summary()),
+            "config_fingerprint_version": 2,
+            "legacy_config_sha256": sha256_json(config.legacy_fingerprint_summary()),
             "selected_sample_ids_sha256": sha256_values(sample.id for sample in samples),
-            "dataset_manifest": ds.manifest(config.dataset),
+            "dataset_manifest": dataset_manifest,
             "judge_prompt_version": config.judge.prompt_version,
             "judge_prompt_sha256": judge.prompt_fingerprint if judge else None,
             "adapter_type": config.adapter.type,
             "group_by": config.group_by,
         },
         "top_ks": top_ks,
-        "config_summary": config.summary(),
+        "config_summary": config_summary,
         "aggregate": _aggregate(results),
         "groups": _group_aggregates(results, config.group_by),
         "coverage": coverage,
         "cost": {"estimated_total": total_cost},
+        "judge_status": {
+            "failures": judge.failures if judge else 0,
+            "circuit_open": judge.circuit_open if judge else False,
+        },
         "results": results,
     }
+    if config.redact_sensitive:
+        report = redact_nested(report)
     out = Path(output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(out, json.dumps(report, ensure_ascii=False, indent=2))
     required = sorted(set(config.required_metrics))
     missing = [
         metric

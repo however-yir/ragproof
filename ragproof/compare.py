@@ -2,28 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-import yaml
-
-
-LOWER_IS_BETTER = {
-    "avg_latency_ms",
-    "p50_latency_ms",
-    "p95_latency_ms",
-    "avg_first_token_latency_ms",
-    "p95_first_token_latency_ms",
-    "error_rate",
-    "empty_answer_rate",
-    "refusal_rate",
-    "hallucination_rate",
-    "duplicate_rate",
-    "negative_hit_rate",
-    "context_redundancy",
-}
+from .metrics.registry import bounded_unit_interval, lower_is_better
+from .policy import GatePolicy
+from .schema import load_run
 
 
 @dataclass
@@ -186,13 +171,18 @@ def _one_group_max(
 def _provenance_result(baseline: dict, current: dict, allow_mismatch: bool) -> ThresholdResult:
     baseline_provenance = baseline.get("provenance") or {}
     current_provenance = current.get("provenance") or {}
-    keys = ("dataset_sha256", "config_sha256", "selected_sample_ids_sha256")
-    mismatches = [
-        key
-        for key in keys
-        if not baseline_provenance.get(key) or not current_provenance.get(key)
-        or baseline_provenance.get(key) != current_provenance.get(key)
-    ]
+    keys = ("dataset_sha256", "selected_sample_ids_sha256")
+    mismatches = [key for key in keys if not baseline_provenance.get(key) or not current_provenance.get(key) or baseline_provenance.get(key) != current_provenance.get(key)]
+    baseline_config_hashes = {
+        baseline_provenance.get("config_sha256"),
+        baseline_provenance.get("legacy_config_sha256"),
+    } - {None}
+    current_config_hashes = {
+        current_provenance.get("config_sha256"),
+        current_provenance.get("legacy_config_sha256"),
+    } - {None}
+    if not baseline_config_hashes or not current_config_hashes or baseline_config_hashes.isdisjoint(current_config_hashes):
+        mismatches.append("config_sha256")
     for key in ("judge_prompt_version", "judge_prompt_sha256", "adapter_type"):
         if key in baseline_provenance and key in current_provenance and baseline_provenance.get(key) != current_provenance.get(key):
             mismatches.append(key)
@@ -234,12 +224,69 @@ def _coverage_result(run: dict, field: str, minimum: float) -> ThresholdResult:
     return ThresholdResult(f"coverage:{field}", minimum, actual, None, passed, reason, "coverage", actual, "higher")
 
 
-def load_threshold_policy(path: str | Path) -> dict[str, object]:
-    """Load a YAML/JSON policy file using the same names as ``compare`` args."""
-    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise ValueError("threshold policy must be a mapping")
-    return data
+def load_threshold_policy(path: str | Path) -> GatePolicy:
+    """Load and strictly validate a shared YAML/JSON gate policy."""
+    return GatePolicy.load(path)
+
+
+def compare_with_policy(
+    baseline_path: str | Path,
+    current_path: str | Path,
+    policy: GatePolicy,
+) -> tuple[list[ThresholdResult], bool]:
+    """Evaluate every gate from one validated policy model."""
+    baseline = load_run(baseline_path)
+    current = load_run(current_path)
+    b_agg: dict[str, float] = baseline.get("aggregate", {})
+    c_agg: dict[str, float] = current.get("aggregate", {})
+    results = [_one_absolute(metric, threshold, b_agg, c_agg) for metric, threshold in policy.thresholds.items()]
+    results.extend(_one_max(metric, threshold, b_agg, c_agg) for metric, threshold in policy.max_thresholds.items())
+
+    for metric, minimum_delta in policy.min_deltas.items():
+        cur_val = c_agg.get(metric)
+        base_val = b_agg.get(metric)
+        delta = cur_val - base_val if cur_val is not None and base_val is not None else None
+        passed = delta is not None and delta >= minimum_delta
+        reason = (
+            f"delta {delta:+.3f} >= minimum {minimum_delta:+.3f}"
+            if passed
+            else f"delta {delta:+.3f} < minimum {minimum_delta:+.3f}"
+            if delta is not None
+            else f"metric '{metric}' missing from baseline or current run"
+        )
+        results.append(ThresholdResult(metric, minimum_delta, cur_val, base_val, passed, reason, "delta", delta))
+
+    for metric, max_drop in policy.max_relative_drops.items():
+        cur_val = c_agg.get(metric)
+        base_val = b_agg.get(metric)
+        if cur_val is None or base_val is None:
+            drop = None
+            passed = False
+            reason = f"metric '{metric}' missing from baseline or current run"
+        elif base_val == 0:
+            if lower_is_better(metric):
+                drop = 0.0 if cur_val <= 0 else 1.0
+            else:
+                drop = 0.0 if cur_val >= 0 else 1.0
+            passed = drop <= max_drop
+            reason = f"relative regression {drop:.1%} {'<=' if passed else '>'} allowed {max_drop:.1%}"
+        else:
+            drop = ((cur_val - base_val) if lower_is_better(metric) else (base_val - cur_val)) / abs(base_val)
+            passed = drop <= max_drop
+            reason = f"relative regression {drop:.1%} {'<=' if passed else '>'} allowed {max_drop:.1%}"
+        results.append(ThresholdResult(metric, max_drop, cur_val, base_val, passed, reason, "relative_drop", drop))
+    for (dimension, group, metric), threshold in GatePolicy.parse_group_mapping(policy.group_thresholds).items():
+        results.append(_one_group_absolute(dimension, group, metric, threshold, baseline.get("groups", {}), current.get("groups", {})))
+    for (dimension, group, metric), threshold in GatePolicy.parse_group_mapping(policy.group_max_thresholds).items():
+        results.append(_one_group_max(dimension, group, metric, threshold, baseline.get("groups", {}), current.get("groups", {})))
+    if policy.min_sample_count is not None:
+        results.append(_sample_count_result(current, policy.min_sample_count))
+    for field, minimum in policy.min_coverage.items():
+        results.append(_coverage_result(current, field, minimum))
+    for field in policy.required_fields:
+        results.append(_coverage_result(current, field, 1.0))
+    results.append(_provenance_result(baseline, current, policy.allow_provenance_mismatch))
+    return results, all(result.passed for result in results)
 
 
 def compare(
@@ -257,77 +304,39 @@ def compare(
     required_fields: Iterable[str] | None = None,
     allow_provenance_mismatch: bool = False,
 ) -> tuple[list[ThresholdResult], bool]:
-    """Return results for all configured gates and a combined pass/fail value."""
-    baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
-    current = json.loads(Path(current_path).read_text(encoding="utf-8"))
-    b_agg: dict[str, float] = baseline.get("aggregate", {})
-    c_agg: dict[str, float] = current.get("aggregate", {})
-    results = [_one_absolute(metric, threshold, b_agg, c_agg) for metric, threshold in thresholds.items()]
-    results.extend(_one_max(metric, threshold, b_agg, c_agg) for metric, threshold in (max_thresholds or {}).items())
-
-    for metric, minimum_delta in (min_deltas or {}).items():
-        cur_val = c_agg.get(metric)
-        base_val = b_agg.get(metric)
-        delta = cur_val - base_val if cur_val is not None and base_val is not None else None
-        passed = delta is not None and delta >= minimum_delta
-        reason = (
-            f"delta {delta:+.3f} >= minimum {minimum_delta:+.3f}"
-            if passed
-            else f"delta {delta:+.3f} < minimum {minimum_delta:+.3f}"
-            if delta is not None
-            else f"metric '{metric}' missing from baseline or current run"
-        )
-        results.append(ThresholdResult(metric, minimum_delta, cur_val, base_val, passed, reason, "delta", delta))
-
-    for metric, max_drop in (max_relative_drops or {}).items():
-        cur_val = c_agg.get(metric)
-        base_val = b_agg.get(metric)
-        if cur_val is None or base_val is None:
-            drop = None
-            passed = False
-            reason = f"metric '{metric}' missing from baseline or current run"
-        elif base_val == 0:
-            drop = 0.0 if cur_val >= 0 else 1.0
-            passed = drop <= max_drop
-            reason = f"relative drop {drop:.1%} {'<=' if passed else '>'} allowed {max_drop:.1%}"
-        else:
-            drop = (base_val - cur_val) / abs(base_val)
-            passed = drop <= max_drop
-            reason = f"relative drop {drop:.1%} {'<=' if passed else '>'} allowed {max_drop:.1%}"
-        results.append(ThresholdResult(metric, max_drop, cur_val, base_val, passed, reason, "relative_drop", drop))
-    for (dimension, group, metric), threshold in (group_thresholds or {}).items():
-        results.append(
-            _one_group_absolute(dimension, group, metric, threshold, baseline.get("groups", {}), current.get("groups", {}))
-        )
-    for (dimension, group, metric), threshold in (group_max_thresholds or {}).items():
-        results.append(_one_group_max(dimension, group, metric, threshold, baseline.get("groups", {}), current.get("groups", {})))
-    if min_sample_count is not None:
-        results.append(_sample_count_result(current, min_sample_count))
-    for field, minimum in (min_coverage or {}).items():
-        results.append(_coverage_result(current, field, minimum))
-    for field in required_fields or ():
-        results.append(_coverage_result(current, field, 1.0))
-    results.append(_provenance_result(baseline, current, allow_provenance_mismatch))
-    return results, all(result.passed for result in results)
+    """Compatibility wrapper that delegates to the shared GatePolicy model."""
+    policy = GatePolicy().merged(
+        thresholds=thresholds,
+        min_deltas=min_deltas,
+        max_relative_drops=max_relative_drops,
+        max_thresholds=max_thresholds,
+        group_thresholds=group_thresholds,
+        group_max_thresholds=group_max_thresholds,
+        min_sample_count=min_sample_count,
+        min_coverage=min_coverage,
+        required_fields=required_fields or (),
+        allow_provenance_mismatch=allow_provenance_mismatch,
+    )
+    return compare_with_policy(baseline_path, current_path, policy)
 
 
 def recommend_thresholds(run_path: str | Path, *, floor: float = 0.95) -> dict[str, float]:
     """Suggest absolute gates at ``floor`` of each bounded baseline metric."""
-    data = json.loads(Path(run_path).read_text(encoding="utf-8"))
+    data = load_run(run_path)
     return {
         name: round(value * floor, 4)
         for name, value in data.get("aggregate", {}).items()
-        if 0 <= value <= 1 and name not in LOWER_IS_BETTER
+        if bounded_unit_interval(name) and not lower_is_better(name)
     }
 
 
 def recommend_max_thresholds(run_path: str | Path, *, headroom: float = 1.05) -> dict[str, float]:
     """Suggest maximum gates for operational/error metrics."""
-    data = json.loads(Path(run_path).read_text(encoding="utf-8"))
+    data = load_run(run_path)
     return {
         name: round(value * headroom, 4)
         for name, value in data.get("aggregate", {}).items()
-        if value >= 0 and name in LOWER_IS_BETTER
+        if value >= 0 and lower_is_better(name)
     }
 
 
